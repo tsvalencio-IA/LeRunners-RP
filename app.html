@@ -4,34 +4,38 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LeRunners - Plataforma</title>
-    <!-- ATENÇÃO: Carregando V2.3 do CSS -->
     <link rel="stylesheet" href="css/styles.css">
+    
     <link rel="manifest" href="manifest.json">
+    <link rel="icon" type="image/png" sizes="192x192" href="img/logo-192.png">
+    <link rel="apple-touch-icon" href="img/logo-192.png">
+
     <link href="https://cdn.jsdelivr.net/npm/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet">
     <meta name="theme-color" content="#00008B">
 </head>
 <body class="app-page">
 
-    <!-- Loader Inicial (O Guardião está checando o login) -->
     <div id="loader" class="loader-container">
         <div class="loader"></div>
         <p>Autenticando...</p>
     </div>
 
-    <!-- Container Principal do Aplicativo (Inicia escondido) -->
     <div id="app-container" class="hidden">
         
-        <!-- Header Fixo -->
         <header class="app-header">
             <h1>LeRunners</h1>
             <nav>
-                <!-- NOVO: Botão de Navegação do Feed -->
                 <button id="nav-planilha-btn" class="btn btn-nav active">
                     <i class='bx bx-calendar'></i> <span>Planilha</span>
                 </button>
                 <button id="nav-feed-btn" class="btn btn-nav">
                     <i class='bx bx-news'></i> <span>Feed</span>
                 </button>
+
+                <button id="nav-profile-btn" class="btn btn-nav">
+                    <i class='bx bx-user-circle'></i> <span>Meu Perfil</span>
+                </button>
+
                 <span id="userDisplay" class="user-display"></span>
                 <button id="logoutButton" class="btn btn-danger">
                     <i class="bx bx-log-out"></i> Sair
@@ -39,92 +43,166 @@
             </nav>
         </header>
 
-        <!-- Conteúdo Dinâmico (Carregado pelo app.js) -->
         <main id="app-main-content" class="app-main">
-            <!-- O Painel do Admin, Atleta ou Feed será injetado aqui -->
-        </main>
+            </main>
     </div>
 
-    <!-- 
-      ===================================================================
-      TEMPLATES HTML (Modelos que o JS vai usar para construir a tela) 
-      ===================================================================
-    -->
+    <footer class="app-footer">
+        Desenvolvido com 🤖 por thIAguinho Soluções
+    </footer>
 
-    <!-- ========== Template do COACH (Admin) V2.3 ========== -->
     <template id="admin-panel-template">
         <div class="admin-dashboard">
             <h2><i class="bx bx-shield-quarter"></i> Painel do Coach</h2>
             
-            <!-- Painel de Aprovações Pendentes (do corri_rp) -->
             <div class="panel approval-panel">
                 <h3><i class='bx bx-user-check'></i> Aprovações Pendentes</h3>
                 <div id="pending-list">
-                    <!-- Lista de atletas aguardando aprovação -->
-                </div>
+                    </div>
             </div>
 
-            <!-- Layout Principal do Coach -->
             <div class="admin-layout">
                 <div class="athlete-list-container panel">
                     <h3><i class='bx bx-group'></i> Meus Atletas</h3>
                     <input type="text" id="athlete-search" class="search-input" placeholder="Pesquisar atleta...">
                     <div id="athlete-list" class="athlete-list">
-                        <!-- Lista de atletas aprovados -->
-                    </div>
+                        </div>
                 </div>
                 <div class="athlete-details-container panel">
                     <h3 id="athlete-detail-name">Selecione um Atleta</h3>
                     
                     <div id="athlete-detail-content" class="hidden">
                         
-                        <!-- Ações do Coach (V2.3) -->
                         <div class="admin-action-buttons">
-                            <button id="analyze-athlete-btn-ia" class="btn btn-secondary btn-small">
-                                <i class='bx bxs-brain'></i> Analisar com IA
-                            </button>
                             <button id="delete-athlete-btn" class="btn btn-danger btn-small">
                                 <i class='bx bx-user-x'></i> Excluir Aluno
                             </button>
                         </div>
                         
-                        <h4><i class='bx bx-calendar-edit'></i> Prescrever Treino</h4>
-                        
-                        <form id="add-workout-form" class="form-minimal">
-                            <div class="form-group">
-                                <label for="workout-date">Data</label>
-                                <input type="date" id="workout-date" required>
-                            </div>
-                            <div class="form-group">
-                                <label for="workout-title">Título do Treino</label>
-                                <input type="text" id="workout-title" placeholder="Ex: Longo 10k Z2" required>
-                            </div>
-                            <div class="form-group">
-                                <label for="workout-description">Descrição (Detalhes)</label>
-                                <textarea id="workout-description" rows="3" placeholder="Detalhes: 10min aquec. + 8km Z2..."></textarea>
-                            </div>
-                            <button type="submit" class="btn btn-secondary">
-                                <i class="bx bx-plus"></i> Salvar Treino
-                            </button>
-                        </form>
-                        
-                        <hr>
-                        <h4><i class='bx bx-history'></i> Treinos Agendados</h4>
-                        <div id="workouts-list">
-                            <!-- Lista de treinos do atleta selecionado -->
+                        <div class="admin-tabs">
+                            <button class="tab-btn active" data-tab="prescrever">Prescrever</button>
+                            <button class="tab-btn" data-tab="kpis">KPIs & IA</button>
                         </div>
+
+                        <div id="admin-tab-prescrever" class="admin-tab-content active">
+                            <h4><i class='bx bx-calendar-edit'></i> Prescrever Treino</h4>
+                            
+                            <form id="add-workout-form" class="form-minimal">
+                                <div class="form-grid-2col">
+                                    <div class="form-group">
+                                        <label for="workout-date">Data</label>
+                                        <input type="date" id="workout-date" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="workout-title">Título do Treino</label>
+                                        <input type="text" id="workout-title" placeholder="Ex: Longo 10k Z2" required>
+                                    </div>
+                                </div>
+                
+                                <fieldset class="workout-fieldset">
+                                    <legend>Detalhes do Treino</legend>
+                                    <div class="form-grid-2col">
+                                        <div class="form-group">
+                                            <label for="workout-modalidade">Modalidade</label>
+                                            <select id="workout-modalidade">
+                                                <option value="Corrida" selected>Corrida</option>
+                                                <option value="Caminhada">Caminhada</option>
+                                                <option value="Fortalecimento">Fortalecimento</option>
+                                                <option value="Ciclismo">Ciclismo</option>
+                                                <option value="Natação">Natação</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="workout-tipo-treino">Tipo de Treino</label>
+                                            <select id="workout-tipo-treino">
+                                                <option value="Rodagem" selected>Rodagem</option>
+                                                <option value="Longo">Longo (Longão)</option>
+                                                <option value="Intervalado">Intervalado (Tiros)</option>
+                                                <option value="Fartlek">Fartlek</option>
+                                                <option value="Progressivo">Progressivo</option>
+                                                <option value="Regressivo">Regressivo</option>
+                                                <option value="Competição">Competição/Prova</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="workout-intensidade">Intensidade</label>
+                                            <select id="workout-intensidade">
+                                                <option value="Leve (Z1/Z2)" selected>Leve (Z1/Z2)</option>
+                                                <option value="Moderado (Z3)">Moderado (Z3)</option>
+                                                <option value="Forte (Z4)">Forte (Z4)</option>
+                                                <option value="Muito Forte (Z5/Tiro)">Muito Forte (Z5/Tiro)</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="workout-percurso">Tipo de Percurso</label>
+                                            <select id="workout-percurso">
+                                                <option value="Asfalto/Rua" selected>Asfalto/Rua</option>
+                                                <option value="Esteira">Esteira</option>
+                                                <option value="Pista">Pista</option>
+                                                <option value="Trilha/Montanha">Trilha/Montanha</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </fieldset>
+                                
+                                <fieldset class="workout-fieldset">
+                                    <legend>Métricas (Opcional)</legend>
+                                     <div class="form-grid-4col">
+                                        <div class="form-group">
+                                            <label for="workout-distancia">Distância</label>
+                                            <input type="text" id="workout-distancia" placeholder="Ex: 10 km">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="workout-tempo">Tempo</label>
+                                            <input type="text" id="workout-tempo" placeholder="Ex: 50 min">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="workout-pace">Pace</label>
+                                            <input type="text" id="workout-pace" placeholder="Ex: 5:00 /km">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="workout-velocidade">Velocidade</label>
+                                            <input type="text" id="workout-velocidade" placeholder="Ex: 12 km/h">
+                                        </div>
+                                    </div>
+                                </fieldset>
+                
+                                <div class="form-group">
+                                    <label for="workout-observacoes">Observações (Opcional)</label>
+                                    <textarea id="workout-observacoes" rows="2" placeholder="Ex: Aquecer 10 min. Fazer na subida..."></textarea>
+                                </div>
+                                
+                                <button type="submit" class="btn btn-secondary">
+                                    <i class="bx bx-plus"></i> Salvar Treino
+                                </button>
+                            </form>
+                            <hr>
+                            <h4><i class='bx bx-history'></i> Treinos Agendados</h4>
+                            <div id="workouts-list">
+                                </div>
+                        </div>
+
+                        <div id="admin-tab-kpis" class="admin-tab-content">
+                            <h4><i class='bx bxs-brain'></i> Análise de Performance (IA)</h4>
+                             <button id="analyze-athlete-btn-ia" class="btn btn-secondary" style="width: 100%; margin-bottom: 1rem;">
+                                <i class='bx bxs-brain'></i> Gerar Nova Análise (Gemini)
+                            </button>
+                            
+                            <h4><i class='bx bx-save'></i> Histórico de Análises Salvas</h4>
+                            <div id="ia-history-list" class="ia-history-list">
+                                </div>
+                        </div>
+
                     </div>
                 </div>
             </div>
         </div>
     </template>
 
-    <!-- ========== Template do ATLETA V2.3 ========== -->
     <template id="atleta-panel-template">
         <div class="atleta-dashboard">
             <div class="atleta-header">
                 <h2><i class="bx bx-run"></i> Minha Planilha</h2>
-                <!-- NOVO (V2.3): Botão Log Manual -->
                 <button id="log-manual-activity-btn" class="btn btn-primary">
                     <i class='bx bx-plus-medical'></i> Registrar Atividade
                 </button>
@@ -134,31 +212,21 @@
             <div id="atleta-workouts-container" class="panel">
                 <h4>Meus Treinos</h4>
                 <div id="atleta-workouts-list">
-                    <!-- Treinos prescritos pelo Coach -->
-                </div>
+                    </div>
             </div>
         </div>
     </template>
 
-    <!-- ========== Template do FEED SOCIAL (V2.1) ========== -->
     <template id="feed-panel-template">
         <div class="feed-dashboard">
             <h2><i class='bx bx-news'></i> Feed da Equipe</h2>
             <p class="subtitle">Veja o que a equipe está fazendo e deixe seu feedback.</p>
             <div id="feed-list" class="feed-list">
-                <!-- Cards de treinos realizados (do /publicWorkouts/) -->
-            </div>
+                </div>
         </div>
     </template>
 
 
-    <!-- 
-      ===================================================================
-      MODAIS GLOBAIS (Pop-ups)
-      ===================================================================
-    -->
-
-    <!-- Modal de Feedback/Comentários (ATUALIZADO V2.3) -->
     <div id="feedback-modal" class="modal-overlay hidden">
         <div class="modal-content">
             <div class="modal-header">
@@ -170,7 +238,6 @@
                     <input type="hidden" id="feedback-workout-id">
                     <input type="hidden" id="feedback-workout-owner-id">
                     
-                    <!-- Seção "Marcar como Feito" -->
                     <fieldset>
                         <legend>Status do Treino</legend>
                         <div class="form-group">
@@ -183,15 +250,22 @@
                             </select>
                         </div>
                         <div class="form-group">
-                            <label for="workout-feedback-text">Como você se sentiu? (Opcional)</label>
-                            <textarea id="workout-feedback-text" rows="3" placeholder="Ex: Senti o joelho no final, mas o pace foi bom..."></textarea>
+                            <label for="workout-feedback-text">Como você se sentiu? (Obrigatório)</label>
+                            <textarea id="workout-feedback-text" rows="3" placeholder="Ex: Senti o joelho no final, mas o pace foi bom..." required></textarea>
                         </div>
                         
-                        <!-- NOVO (V2.3): Upload de Foto -->
                         <div class="form-group">
-                            <label for="photo-upload-input">Anexar Foto (Opcional - Cloudinary)</label>
+                            <label for="photo-upload-input">Anexar Foto (Opcional - Gemini pode ler dados do Strava)</label>
                             <input type="file" id="photo-upload-input" accept="image/*">
+                            <p id="photo-upload-feedback" class="upload-feedback"></p>
                         </div>
+                        
+                        <fieldset id="strava-data-display" class="strava-data-display hidden">
+                            <legend><i class='bx bxl-strava'></i> Dados Extraídos (Gemini Vision)</legend>
+                            <p id="strava-data-distancia"></p>
+                            <p id="strava-data-tempo"></p>
+                            <p id="strava-data-ritmo"></p>
+                        </fieldset>
 
                         <button type="submit" id="save-feedback-btn" class="btn btn-primary">Salvar Feedback</button>
                     </fieldset>
@@ -199,12 +273,10 @@
                 
                 <hr>
 
-                <!-- Seção de Comentários (Coach e Atleta) -->
                 <fieldset>
                     <legend>Comentários (Coach/Atleta)</legend>
                     <div id="comments-list" class="comments-list">
-                        <!-- Comentários serão carregados aqui -->
-                    </div>
+                        </div>
                     <form id="comment-form" class="comment-form">
                         <input type="text" id="comment-input" placeholder="Escreva um comentário..." required>
                         <button type="submit" class="btn btn-secondary btn-small">
@@ -216,7 +288,6 @@
         </div>
     </div>
 
-    <!-- NOVO (V2.3): Modal de Log Manual de Atividade -->
     <div id="log-activity-modal" class="modal-overlay hidden">
         <div class="modal-content">
             <div class="modal-header">
@@ -257,7 +328,6 @@
         </div>
     </div>
 
-    <!-- NOVO (V2.3): Modal "Quem Curtiu" -->
     <div id="who-liked-modal" class="modal-overlay hidden">
         <div class="modal-content" style="max-width: 400px;">
             <div class="modal-header">
@@ -266,13 +336,11 @@
             </div>
             <div class="modal-body">
                 <ul id="who-liked-list">
-                    <!-- Lista de nomes será injetada pelo JS -->
-                </ul>
+                    </ul>
             </div>
         </div>
     </div>
 
-    <!-- NOVO (V2.3): Modal Análise IA (Admin) -->
     <div id="ia-analysis-modal" class="modal-overlay hidden">
         <div class="modal-content">
             <div class="modal-header">
@@ -282,21 +350,83 @@
             <div class="modal-body">
                 <pre id="ia-analysis-output">Gerando relatório...</pre>
             </div>
+            <div class="modal-footer">
+                <button id="save-ia-analysis-btn" class="btn btn-primary hidden">
+                    <i class="bx bx-save"></i> Salvar Análise
+                </button>
+            </div>
         </div>
     </div>
 
+    <div id="profile-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class='bx bx-user-circle'></i> Meu Perfil</h3>
+                <button class="close-btn" id="close-profile-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="profile-form">
+                    <fieldset>
+                        <legend>Minhas Informações</legend>
+                        
+                        <div class="profile-pic-container">
+                            <img src="https://placehold.co/150x150/4169E1/FFFFFF?text=Atleta" alt="Foto do Perfil" id="profile-pic-preview" class="profile-pic-preview">
+                        </div>
 
-    <!-- Scripts Firebase -->
+                        <div class="form-group">
+                            <label for="profile-pic-upload">Alterar Foto (Opcional)</label>
+                            <input type="file" id="profile-pic-upload" accept="image/*">
+                            <p id="profile-upload-feedback" class="upload-feedback"></p>
+                        </div>
+                        <div class="form-group">
+                            <label for="profile-name">Nome Completo</label>
+                            <input type="text" id="profile-name" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="profile-bio">Biografia (Opcional)</label>
+                            <textarea id="profile-bio" rows="3" placeholder="Fale um pouco sobre você, seus objetivos..."></textarea>
+                        </div>
+                        
+                        <button type="submit" id="save-profile-btn" class="btn btn-primary">Salvar Perfil</button>
+                    </fieldset>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div id="view-profile-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class='bx bx-user'></i> Perfil do Atleta</h3>
+                <button class="close-btn" id="close-view-profile-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="profile-pic-container">
+                    <img src="https://placehold.co/150x150/4169E1/FFFFFF?text=Atleta" alt="Foto do Atleta" id="view-profile-pic" class="profile-pic-preview">
+                </div>
+                <h2 id="view-profile-name" class="view-profile-name">Carregando...</h2>
+                <p id="view-profile-bio" class="view-profile-bio">Carregando...</p>
+            </div>
+        </div>
+    </div>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
-    <!-- NOVO (V2.3): Script Cloudinary -->
     <script src="https://upload-widget.cloudinary.com/global/all.js" type="text/javascript"></script>
 
-    <!-- Scripts da Aplicação (ARQUITETURA V2.4) -->
     <script src="js/config.js"></script>
-    <script src="js/app.js"></script> <!-- Cérebro (AppPrincipal) e AuthLogic -->
-    <script src="js/panels.js"></script> <!-- Módulos (AdminPanel, AtletaPanel, FeedPanel) -->
-
-</body>
+    <script src="js/app.js"></script> <script src="js/panels.js"></script> <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./service-worker.js') /* CORRIGIDO DE / PARA ./ */
+                    .then(registration => {
+                        console.log('Service Worker registrado com sucesso:', registration.scope);
+                    })
+                    .catch(error => {
+                        console.error('Falha ao registrar Service Worker:', error);
+                    });
+            });
+        }
+    </script>
+    </body>
 </html>

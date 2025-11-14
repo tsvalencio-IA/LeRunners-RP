@@ -1,17 +1,17 @@
 /* =================================================================== */
-/* ARQUIVO DE MÓDULOS (V2.4 - PAINEIS)
+/* ARQUIVO DE MÓDULOS (V3.5 - PRESCRIÇÃO ESTRUTURADA)
 /* ARQUITETURA: Refatorada (app.js + panels.js)
 /* =================================================================== */
 
 // ===================================================================
-// 3. AdminPanel (Lógica do Painel Coach V2.3)
+// 3. AdminPanel (Lógica do Painel Coach V3.5)
 // ===================================================================
 const AdminPanel = {
     state: {},
     elements: {},
 
     init: (user, db) => {
-        console.log("AdminPanel V2.4: Inicializado.");
+        console.log("AdminPanel V3.5: Inicializado.");
         AdminPanel.state = { db, currentUser: user, selectedAthleteId: null, athletes: {} };
 
         AdminPanel.elements = {
@@ -21,27 +21,58 @@ const AdminPanel = {
             athleteDetailName: document.getElementById('athlete-detail-name'),
             athleteDetailContent: document.getElementById('athlete-detail-content'),
             deleteAthleteBtn: document.getElementById('delete-athlete-btn'),
-            analyzeAthleteBtnIa: document.getElementById('analyze-athlete-btn-ia'), // NOVO (V2.3)
+            
+            // Abas V2.6
+            tabPrescreverBtn: document.querySelector('[data-tab="prescrever"]'),
+            tabKpisBtn: document.querySelector('[data-tab="kpis"]'),
+            adminTabPrescrever: document.getElementById('admin-tab-prescrever'),
+            adminTabKpis: document.getElementById('admin-tab-kpis'),
+            
+            // Conteúdo Aba 1 (Prescrição)
             addWorkoutForm: document.getElementById('add-workout-form'),
-            workoutsList: document.getElementById('workouts-list')
+            workoutsList: document.getElementById('workouts-list'),
+
+            // Conteúdo Aba 2 (IA)
+            analyzeAthleteBtnIa: document.getElementById('analyze-athlete-btn-ia'),
+            iaHistoryList: document.getElementById('ia-history-list')
         };
 
         // Bind de eventos
         AdminPanel.elements.addWorkoutForm.addEventListener('submit', AdminPanel.handleAddWorkout);
         AdminPanel.elements.athleteSearch.addEventListener('input', AdminPanel.renderAthleteList);
         AdminPanel.elements.deleteAthleteBtn.addEventListener('click', AdminPanel.deleteAthlete);
-        AdminPanel.elements.analyzeAthleteBtnIa.addEventListener('click', AdminPanel.handleAnalyzeAthleteIA); // NOVO (V2.3)
+        
+        // Listeners Abas V2.6
+        AdminPanel.elements.tabPrescreverBtn.addEventListener('click', () => AdminPanel.switchTab('prescrever'));
+        AdminPanel.elements.tabKpisBtn.addEventListener('click', () => {
+            AdminPanel.switchTab('kpis');
+            if(AdminPanel.state.selectedAthleteId) {
+                AdminPanel.loadIaHistory(AdminPanel.state.selectedAthleteId);
+            }
+        });
+        AdminPanel.elements.analyzeAthleteBtnIa.addEventListener('click', AdminPanel.handleAnalyzeAthleteIA);
         
         // Carregar dados
         AdminPanel.loadPendingApprovals();
         AdminPanel.loadAthletes();
     },
 
+    // Controle das Abas (V2.6)
+    switchTab: (tabName) => {
+        const { tabPrescreverBtn, tabKpisBtn, adminTabPrescrever, adminTabKpis } = AdminPanel.elements;
+        
+        const isPrescrever = (tabName === 'prescrever');
+        
+        tabPrescreverBtn.classList.toggle('active', isPrescrever);
+        adminTabPrescrever.classList.toggle('active', isPrescrever);
+        
+        tabKpisBtn.classList.toggle('active', !isPrescrever);
+        adminTabKpis.classList.toggle('active', !isPrescrever);
+    },
+
     loadPendingApprovals: () => {
         const pendingRef = AdminPanel.state.db.ref('pendingApprovals');
-        AppPrincipal.state.listeners['adminPending'] = pendingRef;
-        
-        pendingRef.on('value', snapshot => {
+        AppPrincipal.state.listeners['adminPending'] = pendingRef.on('value', snapshot => {
             const { pendingList } = AdminPanel.elements;
             pendingList.innerHTML = "";
             if (!snapshot.exists()) {
@@ -77,9 +108,7 @@ const AdminPanel = {
 
     loadAthletes: () => {
         const athletesRef = AdminPanel.state.db.ref('users');
-        AppPrincipal.state.listeners['adminAthletes'] = athletesRef;
-        
-        athletesRef.orderByChild('name').on('value', snapshot => {
+        AppPrincipal.state.listeners['adminAthletes'] = athletesRef.orderByChild('name').on('value', snapshot => {
             AdminPanel.state.athletes = snapshot.val() || {};
             AdminPanel.renderAthleteList();
         });
@@ -90,7 +119,6 @@ const AdminPanel = {
         const searchTerm = athleteSearch.value.toLowerCase();
         athleteList.innerHTML = "";
         
-        // Reset a seleção se o atleta selecionado não existir mais
         if (AdminPanel.state.selectedAthleteId && !AdminPanel.state.athletes[AdminPanel.state.selectedAthleteId]) {
             AdminPanel.selectAthlete(null, null); // Desseleciona
         }
@@ -123,21 +151,19 @@ const AdminPanel = {
             
             const pendingData = snapshot.val();
             
-            const newUserProfile = {
-                name: pendingData.name,
-                email: pendingData.email,
+            const newUserProfile = { 
+                name: pendingData.name, 
+                email: pendingData.email, 
                 role: "atleta", 
-                createdAt: new Date().toISOString()
-            };
-            
-            const newPublicProfile = {
-                name: pendingData.name,
+                createdAt: new Date().toISOString(),
+                bio: "", // (V3.0)
+                photoUrl: "" // (V3.0)
             };
             
             const updates = {};
             updates[`/users/${uid}`] = newUserProfile;
-            updates[`/publicProfiles/${uid}`] = newPublicProfile;
             updates[`/data/${uid}`] = { workouts: {} };     
+            updates[`/iaAnalysisHistory/${uid}`] = {}; // V2.6
             updates[`/pendingApprovals/${uid}`] = null; 
 
             AdminPanel.state.db.ref().update(updates)
@@ -156,33 +182,30 @@ const AdminPanel = {
             .catch(err => alert("Falha ao rejeitar: " + err.message));
     },
 
-    // ATUALIZADO (V2.1): Excluir Atleta
+    // (V3.0 - Correção Bug 1)
     deleteAthlete: () => {
         const { selectedAthleteId } = AdminPanel.state;
         if (!selectedAthleteId) return;
         
         const athleteName = AdminPanel.state.athletes[selectedAthleteId].name;
-        if (!confirm(`ATENÇÃO: Isso irá apagar PERMANENTEMENTE o atleta "${athleteName}" e todos os seus dados (treinos, comentários, etc.).\n\nIsso NÃO pode ser desfeito.\n\nTem certeza?`)) {
+        if (!confirm(`ATENÇÃO: Isso irá apagar PERMANENTEMENTE o atleta "${athleteName}" e todos os seus dados (treinos, comentários, IA, etc.).\n\nIsso NÃO pode ser desfeito.\n\nTem certeza?`)) {
             return;
         }
 
-        // Exclusão completa (multi-path update)
         const updates = {};
         updates[`/users/${selectedAthleteId}`] = null;
         updates[`/data/${selectedAthleteId}`] = null;
-        updates[`/publicProfiles/${selectedAthleteId}`] = null;
+        updates[`/iaAnalysisHistory/${selectedAthleteId}`] = null; // V2.6
         
-        // NOVO (V2.1): Limpa os publicWorkouts dele (Client-side cleanup)
         const feedRef = AdminPanel.state.db.ref('publicWorkouts');
         feedRef.orderByChild('ownerId').equalTo(selectedAthleteId).once('value', snapshot => {
             snapshot.forEach(childSnapshot => {
-                updates[`/publicWorkouts/${childSnapshot.key}`] = null;
-                // (Opcional) Limpar likes e comentários desses workouts
-                updates[`/workoutComments/${childSnapshot.key}`] = null;
-                updates[`/workoutLikes/${childSnapshot.key}`] = null;
+                const workoutId = childSnapshot.key;
+                updates[`/publicWorkouts/${workoutId}`] = null;
+                updates[`/workoutComments/${workoutId}`] = null;
+                updates[`/workoutLikes/${workoutId}`] = null;
             });
             
-            // Executa a exclusão em massa DEPOIS de encontrar os workouts
             AdminPanel.state.db.ref().update(updates)
                 .then(() => {
                     console.log("Atleta e seus dados públicos foram excluídos.");
@@ -192,13 +215,10 @@ const AdminPanel = {
         });
     },
 
+    // (V3.0 - Correção Bug 2)
     selectAthlete: (uid, name) => {
-        if (AdminPanel.state.selectedAthleteId === uid) return; // Já selecionado
-        
-        // Limpa o listener de treinos do atleta anterior
-        if (AppPrincipal.state.listeners['adminWorkouts']) {
-            AppPrincipal.state.listeners['adminWorkouts'].off();
-        }
+        // Limpa TODOS os listeners do painel anterior (Bug 2)
+        AppPrincipal.cleanupListeners(true);
 
         if (uid === null) {
             // Desselecionando
@@ -208,12 +228,13 @@ const AdminPanel = {
         } else {
             // Selecionando
             AdminPanel.state.selectedAthleteId = uid;
-            AdminPanel.elements.athleteDetailName.textContent = `Planejamento de: ${name}`;
+            AdminPanel.elements.athleteDetailName.textContent = `Atleta: ${name}`;
             AdminPanel.elements.athleteDetailContent.classList.remove('hidden');
+            AdminPanel.switchTab('prescrever'); // Sempre reseta para a aba 'prescrever'
             AdminPanel.loadWorkouts(uid);
+            AdminPanel.loadIaHistory(uid); // V2.6
         }
         
-        // Atualiza a classe 'selected' na lista
         document.querySelectorAll('.athlete-list-item').forEach(el => {
             el.classList.toggle('selected', el.dataset.uid === uid);
         });
@@ -224,9 +245,8 @@ const AdminPanel = {
         workoutsList.innerHTML = "<p>Carregando treinos...</p>";
         
         const workoutsRef = AdminPanel.state.db.ref(`data/${athleteId}/workouts`);
-        AppPrincipal.state.listeners['adminWorkouts'] = workoutsRef; // Registra novo listener
-
-        workoutsRef.orderByChild('date').on('value', snapshot => {
+        // Recria o listener principal de treinos
+        AppPrincipal.state.listeners['adminWorkouts'] = workoutsRef.orderByChild('date').on('value', snapshot => {
             workoutsList.innerHTML = ""; 
             if (!snapshot.exists()) {
                 workoutsList.innerHTML = "<p>Nenhum treino agendado.</p>";
@@ -242,7 +262,42 @@ const AdminPanel = {
             });
         });
     },
+    
+    // Carrega histórico IA (V2.6)
+    loadIaHistory: (athleteId) => {
+        const { iaHistoryList } = AdminPanel.elements;
+        if (!iaHistoryList) return; 
+        
+        iaHistoryList.innerHTML = "<p>Carregando histórico de IA...</p>";
+        
+        const historyRef = AdminPanel.state.db.ref(`iaAnalysisHistory/${athleteId}`);
+        // Recria o listener principal do histórico
+        AppPrincipal.state.listeners['adminIaHistory'] = historyRef.orderByChild('analysisDate').limitToLast(10).on('value', snapshot => {
+            iaHistoryList.innerHTML = ""; 
+            if (!snapshot.exists()) {
+                iaHistoryList.innerHTML = "<p>Nenhuma análise de IA salva para este atleta.</p>";
+                return;
+            }
 
+            let items = [];
+            snapshot.forEach(childSnapshot => {
+                items.push({
+                    id: childSnapshot.key,
+                    data: childSnapshot.val()
+                });
+            });
+
+            // Inverte para mostrar o mais novo primeiro
+            items.reverse().forEach(item => {
+                const card = AdminPanel.createIaHistoryCard(item.id, item.data);
+                iaHistoryList.appendChild(card);
+            });
+        });
+    },
+
+    // ===================================================================
+    // ATUALIZADO (V3.5): Salva o formulário estruturado
+    // ===================================================================
     handleAddWorkout: (e) => {
         e.preventDefault();
         const { selectedAthleteId } = AdminPanel.state;
@@ -250,39 +305,84 @@ const AdminPanel = {
         
         if (!selectedAthleteId) return alert("Selecione um atleta.");
 
+        // 1. Coleta dados básicos
+        const date = addWorkoutForm.querySelector('#workout-date').value;
+        const title = addWorkoutForm.querySelector('#workout-title').value;
+        
+        if (!date || !title) return alert("Data e Título são obrigatórios.");
+
+        // 2. Coleta dados estruturados
+        const modalidade = addWorkoutForm.querySelector('#workout-modalidade').value;
+        const tipoTreino = addWorkoutForm.querySelector('#workout-tipo-treino').value;
+        const intensidade = addWorkoutForm.querySelector('#workout-intensidade').value;
+        const percurso = addWorkoutForm.querySelector('#workout-percurso').value;
+        
+        // 3. Coleta métricas (opcionais)
+        const distancia = addWorkoutForm.querySelector('#workout-distancia').value.trim();
+        const tempo = addWorkoutForm.querySelector('#workout-tempo').value.trim();
+        const pace = addWorkoutForm.querySelector('#workout-pace').value.trim();
+        const velocidade = addWorkoutForm.querySelector('#workout-velocidade').value.trim();
+        
+        // 4. Coleta observações (opcional)
+        const observacoes = addWorkoutForm.querySelector('#workout-observacoes').value.trim();
+
+        // 5. Constrói a string de 'description'
+        let description = `[${modalidade}] - [${tipoTreino}]\n`;
+        description += `Intensidade: ${intensidade}\n`;
+        description += `Percurso: ${percurso}\n`;
+        description += `--- \n`;
+        
+        if (distancia) description += `Distância: ${distancia}\n`;
+        if (tempo) description += `Tempo: ${tempo}\n`;
+        if (pace) description += `Pace: ${pace}\n`;
+        if (velocidade) description += `Velocidade: ${velocidade}\n`;
+        
+        if (observacoes) {
+             description += `--- \nObservações:\n${observacoes}`;
+        }
+
+        // 6. Prepara o objeto para o Firebase
         const workoutData = {
-            date: addWorkoutForm.querySelector('#workout-date').value,
-            title: addWorkoutForm.querySelector('#workout-title').value,
-            description: addWorkoutForm.querySelector('#workout-description').value,
+            date: date,
+            title: title,
+            description: description, // A string formatada vai aqui
             createdBy: AdminPanel.state.currentUser.uid,
             createdAt: new Date().toISOString(),
             status: "planejado",
             feedback: "",
-            imageUrl: null // V2.3
+            imageUrl: null,
+            stravaData: null
         };
 
-        if (!workoutData.date || !workoutData.title) return alert("Data e Título são obrigatórios.");
-
+        // 7. Salva no DB
         AdminPanel.state.db.ref(`data/${selectedAthleteId}/workouts`).push(workoutData)
-            .then(() => addWorkoutForm.reset())
+            .then(() => {
+                // Limpa apenas os campos de métricas e observações
+                addWorkoutForm.querySelector('#workout-distancia').value = "";
+                addWorkoutForm.querySelector('#workout-tempo').value = "";
+                addWorkoutForm.querySelector('#workout-pace').value = "";
+                addWorkoutForm.querySelector('#workout-velocidade').value = "";
+                addWorkoutForm.querySelector('#workout-observacoes').value = "";
+                addWorkoutForm.querySelector('#workout-title').value = "";
+                // Mantém data, modalidade, tipo, intensidade e percurso para facilitar o próximo cadastro
+            })
             .catch(err => alert("Falha ao salvar o treino: " + err.message));
     },
     
-    // Card de Treino (Versão Admin V2.3)
+    // Card de Treino (Admin V2.6)
     createWorkoutCard: (id, data, athleteId) => {
         const el = document.createElement('div');
         el.className = 'workout-card';
         el.innerHTML = `
             <div class="workout-card-header">
-                <div>
-                    <span class="date">${data.date}</span>
-                    <span class="title">${data.title}</span>
-                </div>
+                <span class="date">${data.date}</span>
+                <span class="title">${data.title}</span>
                 <span class="status-tag ${data.status || 'planejado'}">${data.status || 'planejado'}</span>
             </div>
             <div class="workout-card-body">
                 <p>${data.description || "Sem descrição."}</p>
                 ${data.feedback ? `<p class="feedback-text">${data.feedback}</p>` : ''}
+                ${data.stravaData ? AdminPanel.createStravaDataDisplay(data.stravaData) : ''}
                 ${data.imageUrl ? `<img src="${data.imageUrl}" alt="Foto do treino" class="workout-image">` : ''}
             </div>
             <div class="workout-card-footer">
@@ -313,33 +413,82 @@ const AdminPanel = {
             }
         });
         
-        // Carrega Likes e Comentários (V2.3)
-        AdminPanel.loadWorkoutStats(el, id);
+        // Carrega Likes e Comentários (V2.6)
+        AdminPanel.loadWorkoutStats(el, id, athleteId);
         
         return el;
     },
     
-    // Carrega status (likes/comentários) de um card (V2.3)
-    loadWorkoutStats: (cardElement, workoutId) => {
+    // Card Histórico IA (V2.6)
+    createIaHistoryCard: (id, data) => {
+        const el = document.createElement('div');
+        el.className = 'workout-card';
+        
+        const date = new Date(data.analysisDate).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+        
+        // Pega um resumo da análise (primeiras linhas)
+        const summary = data.analysisResult.split('\n').slice(0, 3).join('\n') + '...';
+
+        el.innerHTML = `
+            <div class="workout-card-header">
+                <div>
+                    <span class="date">Análise de ${date}</span>
+                    <span class="title">Gerada por ${AppPrincipal.state.userCache[data.coachUid]?.name || 'Coach'}</span>
+                </div>
+            </div>
+            <div class="workout-card-body">
+                <p>${summary}</p>
+            </div>
+        `;
+
+        // Abre o modal da IA em modo "Visualização"
+        el.addEventListener('click', () => {
+            AppPrincipal.openIaAnalysisModal(data);
+        });
+        
+        return el;
+    },
+
+    // Helper p/ Strava (V2.6)
+    createStravaDataDisplay: (stravaData) => {
+        return `
+            <fieldset class="strava-data-display">
+                <legend><i class='bx bxl-strava'></i> Dados Extraídos (Gemini Vision)</legend>
+                <p>Distância: ${stravaData.distancia || "N/A"}</p>
+                <p>Tempo:     ${stravaData.tempo || "N/A"}</p>
+                <p>Ritmo:     ${stravaData.ritmo || "N/A"}</p>
+            </fieldset>
+        `;
+    },
+    
+    // Carrega status (likes/comentários) de um card (V3.0 - Bug 2)
+    loadWorkoutStats: (cardElement, workoutId, ownerId) => {
         const likeBtn = cardElement.querySelector('.btn-like');
         const likeCount = cardElement.querySelector('.like-count');
         const commentCount = cardElement.querySelector('.comment-count');
         
+        const isOwner = (AdminPanel.state.currentUser.uid === ownerId);
+        
         const likesRef = AdminPanel.state.db.ref(`workoutLikes/${workoutId}`);
         const commentsRef = AdminPanel.state.db.ref(`workoutComments/${workoutId}`);
         
-        // Listener de Likes
+        const likesListenerKey = `likes_${workoutId}`;
+        const commentsListenerKey = `comments_${workoutId}`;
+
         const likesListener = likesRef.on('value', snapshot => {
             const count = snapshot.numChildren();
             likeCount.textContent = count;
-            // Verifica se o Coach (usuário atual) curtiu
+
             if (snapshot.hasChild(AdminPanel.state.currentUser.uid)) {
                 likeBtn.classList.add('liked');
             } else {
                 likeBtn.classList.remove('liked');
             }
             
-            // NOVO (V2.3): Adiciona clique para ver quem curtiu
+            if (isOwner) {
+                likeBtn.disabled = true;
+            }
+
             if (count > 0) {
                 likeCount.classList.add('like-count-btn');
                 likeCount.onclick = (e) => {
@@ -352,37 +501,41 @@ const AdminPanel = {
             }
         });
         
-        // Listener de Comentários
         const commentsListener = commentsRef.on('value', snapshot => {
             commentCount.textContent = snapshot.numChildren();
         });
 
         // Ação de Curtir (Coach)
-        likeBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const myLikeRef = likesRef.child(AdminPanel.state.currentUser.uid);
-            myLikeRef.once('value', snapshot => {
-                if (snapshot.exists()) {
-                    myLikeRef.remove(); // Descurtir
-                } else {
-                    myLikeRef.set(true); // Curtir
-                }
+        if (!isOwner) {
+            likeBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const myLikeRef = likesRef.child(AdminPanel.state.currentUser.uid);
+                myLikeRef.once('value', snapshot => {
+                    if (snapshot.exists()) {
+                        myLikeRef.remove(); // Descurtir
+                    } else {
+                        myLikeRef.set(true); // Curtir
+                    }
+                });
             });
-        });
+        }
         
-        // Registra listeners para limpeza
-        AppPrincipal.state.listeners[`likes_${workoutId}`] = likesListener;
-        AppPrincipal.state.listeners[`comments_${workoutId}`] = commentsListener;
+        AppPrincipal.state.listeners[likesListenerKey] = likesListener;
+        AppPrincipal.state.listeners[commentsListenerKey] = commentsListener;
     },
 
-    // NOVO (V2.3): Lógica de Análise IA
+    // Análise IA (V2.7)
     handleAnalyzeAthleteIA: async () => {
         const { selectedAthleteId } = AdminPanel.state;
         if (!selectedAthleteId) return alert("Selecione um atleta.");
         
-        AppPrincipal.openIaAnalysisModal();
-        const outputEl = AppPrincipal.elements.iaAnalysisOutput;
-        outputEl.textContent = "Coletando dados do atleta...";
+        AppPrincipal.openIaAnalysisModal(); // Abre o modal (sem dados)
+        
+        const iaAnalysisOutput = AppPrincipal.elements.iaAnalysisOutput;
+        const saveBtn = AppPrincipal.elements.saveIaAnalysisBtn;
+        
+        iaAnalysisOutput.textContent = "Coletando dados do atleta...";
+        saveBtn.classList.add('hidden'); // Esconde o botão Salvar
 
         try {
             // 1. Coletar dados do atleta (últimos 10 treinos)
@@ -407,44 +560,53 @@ const AdminPanel = {
                 ${JSON.stringify(workoutData, null, 2)}
                 
                 ANÁLISE SOLICITADA:
-                Com base nos dados acima (status, feedback do atleta, datas), gere um relatório conciso em TÓPICOS (Markdown) respondendo:
+                Com base nos dados acima (status, feedback do atleta, datas, e stravaData se houver), gere um relatório conciso em TÓPICOS (Markdown) respondendo:
                 1.  **Consistência:** O atleta está treinando regularmente? (Compare as 'datas' dos treinos 'realizados').
                 2.  **Percepção de Esforço:** Qual é o sentimento geral do atleta? (Analise os campos 'feedback').
-                3.  **Pontos de Atenção:** Existem sinais de alerta? (Ex: Dores, status 'nao_realizado' frequente, feedbacks negativos).
-                4.  **Sugestão de Foco:** Qual deve ser o foco para a próxima semana? (Ex: Focar em recuperação, aumentar volume, etc.).
+                3.  **Performance (Dados):** O atleta registrou dados do Strava (stravaData)? Se sim, os ritmos são condizentes com os treinos?
+                4.  **Pontos de Atenção:** Existem sinais de alerta? (Ex: Dores, status 'nao_realizado' frequente, feedbacks negativos).
+                5.  **Sugestão de Foco:** Qual deve ser o foco para a próxima semana? (Ex: Focar em recuperação, aumentar volume, etc.).
             `;
             
-            outputEl.textContent = "Enviando dados para análise (Gemini)...";
+            iaAnalysisOutput.textContent = "Enviando dados para análise (Gemini)...";
             
-            // 3. Chamar a API
-            const analysisResult = await AppPrincipal.callGeminiAPI(prompt);
+            // 3. Chamar a API (do AppPrincipal)
+            const analysisResult = await AppPrincipal.callGeminiTextAPI(prompt);
             
-            // 4. Exibir resultado
-            outputEl.textContent = analysisResult;
+            // 4. Exibir resultado e armazenar no state (para o botão Salvar)
+            iaAnalysisOutput.textContent = analysisResult;
+            AppPrincipal.state.currentAnalysisData = {
+                analysisDate: new Date().toISOString(),
+                coachUid: AdminPanel.state.currentUser.uid,
+                prompt: prompt, // Salva o prompt para referência futura
+                analysisResult: analysisResult
+            };
+            saveBtn.classList.remove('hidden'); // Mostra o botão Salvar
 
         } catch (err) {
             console.error("Erro na Análise IA:", err);
-            outputEl.textContent = `ERRO: ${err.message}`;
+            iaAnalysisOutput.textContent = `ERRO: ${err.message}`;
+            saveBtn.classList.add('hidden'); // Esconde o botão se der erro
         }
     }
 };
 
 // ===================================================================
-// 4. AtletaPanel (Lógica do Painel Atleta V2.3)
+// 4. AtletaPanel (Lógica do Painel Atleta V3.3)
 // ===================================================================
 const AtletaPanel = {
     state: {},
     elements: {},
 
     init: (user, db) => {
-        console.log("AtletaPanel V2.4: Inicializado.");
+        console.log("AtletaPanel V3.3: Inicializado.");
         AtletaPanel.state = { db, currentUser: user };
         AtletaPanel.elements = { 
             workoutsList: document.getElementById('atleta-workouts-list'),
             logManualActivityBtn: document.getElementById('log-manual-activity-btn')
         };
 
-        // NOVO (V2.3): Botão Log Manual
+        // V2.3: Botão Log Manual
         AtletaPanel.elements.logManualActivityBtn.addEventListener('click', AppPrincipal.openLogActivityModal);
 
         AtletaPanel.loadWorkouts(user.uid);
@@ -455,9 +617,7 @@ const AtletaPanel = {
         workoutsList.innerHTML = "<p>Carregando seus treinos...</p>";
         
         const workoutsRef = AtletaPanel.state.db.ref(`data/${athleteId}/workouts`);
-        AppPrincipal.state.listeners['atletaWorkouts'] = workoutsRef; // Registra listener
-
-        workoutsRef.orderByChild('date').on('value', snapshot => {
+        AppPrincipal.state.listeners['atletaWorkouts'] = workoutsRef.orderByChild('date').on('value', snapshot => {
             workoutsList.innerHTML = ""; 
             if (!snapshot.exists()) {
                 workoutsList.innerHTML = "<p>Nenhum treino encontrado. Fale com seu coach!</p>";
@@ -474,21 +634,20 @@ const AtletaPanel = {
         });
     },
 
-    // Card de Treino (Versão Atleta V2.3)
+    // Card de Treino (Atleta V3.3)
     createWorkoutCard: (id, data, athleteId) => {
         const el = document.createElement('div');
         el.className = 'workout-card';
         el.innerHTML = `
             <div class="workout-card-header">
-                <div>
-                    <span class="date">${data.date}</span>
-                    <span class="title">${data.title}</span>
-                </div>
+                <span class="date">${data.date}</span>
+                <span class="title">${data.title}</span>
                 <span class="status-tag ${data.status || 'planejado'}">${data.status || 'planejado'}</span>
             </div>
             <div class="workout-card-body">
                 <p>${data.description || "Sem descrição."}</p>
                 ${data.feedback ? `<p class="feedback-text">${data.feedback}</p>` : ''}
+                ${data.stravaData ? AtletaPanel.createStravaDataDisplay(data.stravaData) : ''}
                 ${data.imageUrl ? `<img src="${data.imageUrl}" alt="Foto do treino" class="workout-image">` : ''}
             </div>
             <div class="workout-card-footer">
@@ -515,31 +674,52 @@ const AtletaPanel = {
              }
         });
         
-        // Carrega Likes e Comentários (V2.3)
-        AtletaPanel.loadWorkoutStats(el, id);
+        // Carrega Likes e Comentários
+        AtletaPanel.loadWorkoutStats(el, id, athleteId);
         
         return el;
     },
     
-    // Carrega status (likes/comentários) de um card (Quase idêntico ao AdminPanel)
-    loadWorkoutStats: (cardElement, workoutId) => {
+    // (V3.3): Helper de Strava
+    createStravaDataDisplay: (stravaData) => {
+        return `
+            <fieldset class="strava-data-display">
+                <legend><i class='bx bxl-strava'></i> Dados Extraídos (Gemini Vision)</legend>
+                <p>Distância: ${stravaData.distancia || "N/A"}</p>
+                <p>Tempo:     ${stravaData.tempo || "N/A"}</p>
+                <p>Ritmo:     ${stravaData.ritmo || "N/A"}</p>
+            </fieldset>
+        `;
+    },
+    
+    // Carrega status (likes/comentários) de um card (V3.3)
+    loadWorkoutStats: (cardElement, workoutId, ownerId) => {
         const likeBtn = cardElement.querySelector('.btn-like');
         const likeCount = cardElement.querySelector('.like-count');
         const commentCount = cardElement.querySelector('.comment-count');
         
+        const isOwner = (AtletaPanel.state.currentUser.uid === ownerId);
+        
         const likesRef = AtletaPanel.state.db.ref(`workoutLikes/${workoutId}`);
         const commentsRef = AtletaPanel.state.db.ref(`workoutComments/${workoutId}`);
         
+        const likesListenerKey = `likes_${workoutId}`;
+        const commentsListenerKey = `comments_${workoutId}`;
+
         const likesListener = likesRef.on('value', snapshot => {
-            likeCount.textContent = snapshot.numChildren();
+            const count = snapshot.numChildren();
+            likeCount.textContent = count;
+
             if (snapshot.hasChild(AtletaPanel.state.currentUser.uid)) {
                 likeBtn.classList.add('liked');
             } else {
                 likeBtn.classList.remove('liked');
             }
 
-            // NOVO (V2.3): Adiciona clique para ver quem curtiu
-            const count = snapshot.numChildren();
+            if (isOwner) {
+                likeBtn.disabled = true;
+            }
+
             if (count > 0) {
                 likeCount.classList.add('like-count-btn');
                 likeCount.onclick = (e) => {
@@ -557,17 +737,19 @@ const AtletaPanel = {
         });
 
         // Ação de Curtir (Atleta)
-        likeBtn.addEventListener('click', (e) => {
-            e.stopPropagation(); // Impede o modal de abrir
-            const myLikeRef = likesRef.child(AtletaPanel.state.currentUser.uid);
-            myLikeRef.once('value', snapshot => {
-                if (snapshot.exists()) {
-                    myLikeRef.remove(); // Descurtir
-                } else {
-                    myLikeRef.set(true); // Curtir
-                }
+        if (!isOwner) {
+            likeBtn.addEventListener('click', (e) => {
+                e.stopPropagation(); // Impede o modal de abrir
+                const myLikeRef = likesRef.child(AtletaPanel.state.currentUser.uid);
+                myLikeRef.once('value', snapshot => {
+                    if (snapshot.exists()) {
+                        myLikeRef.remove(); // Descurtir
+                    } else {
+                        myLikeRef.set(true); // Curtir
+                    }
+                });
             });
-        });
+        }
         
         // Ação de Comentar (Atleta) - Abre o modal
         cardElement.querySelector('.btn-comment').addEventListener('click', (e) => {
@@ -575,24 +757,23 @@ const AtletaPanel = {
              // O clique no card (que é o listener principal) vai abrir o modal
         });
         
-        AppPrincipal.state.listeners[`likes_${workoutId}`] = likesListener;
-        AppPrincipal.state.listeners[`comments_${workoutId}`] = commentsListener;
+        AppPrincipal.state.listeners[likesListenerKey] = likesListener;
+        AppPrincipal.state.listeners[commentsListenerKey] = commentsListener;
     }
 };
 
 // ===================================================================
-// 5. FeedPanel (Lógica do Feed Social V2.3)
+// 5. FeedPanel (Lógica do Feed Social V3.3)
 // ===================================================================
 const FeedPanel = {
     state: {},
     elements: {},
 
     init: (user, db) => {
-        console.log("FeedPanel V2.4: Inicializado.");
+        console.log("FeedPanel V3.3: Inicializado.");
         FeedPanel.state = { db, currentUser: user };
         FeedPanel.elements = { feedList: document.getElementById('feed-list') };
         
-        // V2.1: Lógica corrigida para ler de /publicWorkouts/
         FeedPanel.loadFeed();
     },
 
@@ -601,18 +782,13 @@ const FeedPanel = {
         feedList.innerHTML = "<p>Carregando feed...</p>";
         
         const feedRef = FeedPanel.state.db.ref('publicWorkouts');
-        AppPrincipal.state.listeners['feedData'] = feedRef;
-
-        // Pega os 20 treinos realizados mais recentes
-        feedRef.orderByChild('realizadoAt').limitToLast(20).on('value', snapshot => {
+        AppPrincipal.state.listeners['feedData'] = feedRef.orderByChild('realizadoAt').limitToLast(20).on('value', snapshot => {
             feedList.innerHTML = "";
             if (!snapshot.exists()) {
                 feedList.innerHTML = "<p>Nenhum treino realizado pela equipe ainda.</p>";
                 return;
             }
             
-            // O snapshot vem ordenado do mais antigo para o mais novo
-            // Precisamos inverter no cliente
             let feedItems = [];
             snapshot.forEach(childSnapshot => {
                 feedItems.push({
@@ -627,21 +803,27 @@ const FeedPanel = {
                     item.data,
                     item.data.ownerId
                 );
-                feedList.appendChild(card); // Append (pois já invertemos)
+                feedList.appendChild(card);
             });
         });
     },
     
-    // Card do Feed (V2.3)
+    // (V3.2): Card do Feed com listeners no Avatar/Nome
     createFeedCard: (id, data, ownerId) => {
         const el = document.createElement('div');
         el.className = 'workout-card';
         
-        // Pega o nome do atleta do cache (carregado pelo AppPrincipal)
-        const athleteName = AppPrincipal.state.publicProfiles[ownerId]?.name || data.ownerName || "Atleta";
+        // V3.0: Pega o atleta do cache de /users
+        const athleteData = AppPrincipal.state.userCache[ownerId];
+        
+        const athleteName = athleteData?.name || data.ownerName || "Atleta";
+        // V3.0: Define o avatar
+        const athleteAvatar = athleteData?.photoUrl || 'https://placehold.co/150x150/4169E1/FFFFFF?text=LR';
         
         el.innerHTML = `
             <div class="workout-card-header">
+                <img src="${athleteAvatar}" alt="Avatar de ${athleteName}" class="athlete-avatar">
+                
                 <span class="athlete-name">${athleteName}</span>
                 <div>
                     <span class="date">${data.date}</span>
@@ -652,6 +834,7 @@ const FeedPanel = {
             <div class="workout-card-body">
                 ${data.description ? `<p>${data.description}</p>` : ''}
                 ${data.feedback ? `<p class="feedback-text">${data.feedback}</p>` : ''}
+                ${data.stravaData ? AtletaPanel.createStravaDataDisplay(data.stravaData) : ''}
                 ${data.imageUrl ? `<img src="${data.imageUrl}" alt="Foto do treino" class="workout-image">` : ''}
             </div>
             <div class="workout-card-footer">
@@ -661,39 +844,61 @@ const FeedPanel = {
                 </div>
             </div>
         `;
+
+        // (V3.2): Adiciona listeners para abrir o modal de visualização de perfil
+        const avatarEl = el.querySelector('.athlete-avatar');
+        const nameEl = el.querySelector('.athlete-name');
+
+        const openProfile = (e) => {
+            e.stopPropagation(); // Impede o modal de feedback de abrir
+            AppPrincipal.openViewProfileModal(ownerId);
+        };
+
+        avatarEl.addEventListener('click', openProfile);
+        nameEl.addEventListener('click', openProfile);
         
-        // Abre o Modal de Comentários
+        // Abre o Modal de Feedback (clique no card)
         el.addEventListener('click', (e) => {
-             if (!e.target.closest('button')) { // Não abre se clicar no like
+             // Não abre se clicar no like (botões são tratados) ou nos elementos de perfil (tratados por stopPropagation)
+             if (!e.target.closest('button')) { 
                 AppPrincipal.openFeedbackModal(id, ownerId, data.title);
              }
         });
 
-        // Carrega Likes e Comentários (V2.3)
-        FeedPanel.loadWorkoutStats(el, id);
+        // Carrega Likes e Comentários
+        FeedPanel.loadWorkoutStats(el, id, ownerId);
         
         return el;
     },
     
-    // Carrega status (quase idêntico ao Admin/Atleta, mas usa o state do Feed)
-    loadWorkoutStats: (cardElement, workoutId) => {
+    // Carrega status (likes/comentários) de um card (V3.3)
+    loadWorkoutStats: (cardElement, workoutId, ownerId) => {
         const likeBtn = cardElement.querySelector('.btn-like');
         const likeCount = cardElement.querySelector('.like-count');
         const commentCount = cardElement.querySelector('.comment-count');
-        
+
+        const isOwner = (FeedPanel.state.currentUser.uid === ownerId);
+
         const likesRef = FeedPanel.state.db.ref(`workoutLikes/${workoutId}`);
         const commentsRef = FeedPanel.state.db.ref(`workoutComments/${workoutId}`);
         
+        const likesListenerKey = `feed_likes_${workoutId}`;
+        const commentsListenerKey = `feed_comments_${workoutId}`;
+        
         const likesListener = likesRef.on('value', snapshot => {
-            likeCount.textContent = snapshot.numChildren();
+            const count = snapshot.numChildren();
+            likeCount.textContent = count;
+            
             if (snapshot.hasChild(FeedPanel.state.currentUser.uid)) {
                 likeBtn.classList.add('liked');
             } else {
                 likeBtn.classList.remove('liked');
             }
 
-            // NOVO (V2.3): Adiciona clique para ver quem curtiu
-            const count = snapshot.numChildren();
+            if (isOwner) {
+                likeBtn.disabled = true;
+            }
+
             if (count > 0) {
                 likeCount.classList.add('like-count-btn');
                 likeCount.onclick = (e) => {
@@ -711,19 +916,21 @@ const FeedPanel = {
         });
 
         // Ação de Curtir
-        likeBtn.addEventListener('click', (e) => {
-            e.stopPropagation(); // Impede o modal de abrir
-            const myLikeRef = likesRef.child(FeedPanel.state.currentUser.uid);
-            myLikeRef.once('value', snapshot => {
-                if (snapshot.exists()) {
-                    myLikeRef.remove(); // Descurtir
-                } else {
-                    myLikeRef.set(true); // Curtir
-                }
+        if (!isOwner) {
+            likeBtn.addEventListener('click', (e) => {
+                e.stopPropagation(); // Impede o modal de abrir
+                const myLikeRef = likesRef.child(FeedPanel.state.currentUser.uid);
+                myLikeRef.once('value', snapshot => {
+                    if (snapshot.exists()) {
+                        myLikeRef.remove(); // Descurtir
+                    } else {
+                        myLikeRef.set(true); // Curtir
+                    }
+                });
             });
-        });
+        }
         
-        AppPrincipal.state.listeners[`feed_likes_${workoutId}`] = likesListener;
-        AppPrincipal.state.listeners[`feed_comments_${workoutId}`] = commentsListener;
+        AppPrincipal.state.listeners[likesListenerKey] = likesListener;
+        AppPrincipal.state.listeners[commentsListenerKey] = commentsListener;
     }
 };
