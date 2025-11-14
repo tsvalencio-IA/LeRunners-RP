@@ -1,5 +1,5 @@
 /* =================================================================== */
-/* ARQUIVO DE LÓGICA UNIFICADO (V2.4 - CÉREBRO E AUTH)
+/* ARQUIVO DE LÓGICA UNIFICADO (V2.5 - CÉREBRO E AUTH - CORRIGIDO)
 /* ARQUITETURA: Refatorada (app.js + panels.js)
 /* =================================================================== */
 
@@ -24,17 +24,19 @@ const AppPrincipal = {
     },
 
     init: () => {
-        console.log("Iniciando AppPrincipal V2.4 (Cérebro)...");
+        console.log("Iniciando AppPrincipal V2.5 (Cérebro Corrigido)...");
         
-        if (typeof firebaseConfig === 'undefined' || firebaseConfig.apiKey.includes("COLE_SUA_CHAVE")) {
-            console.error("ERRO CRÍTICO: config.js não carregado.");
+        // CORREÇÃO V2.5: Verifica a chave no 'window'
+        if (typeof window.firebaseConfig === 'undefined' || window.firebaseConfig.apiKey.includes("COLE_SUA_CHAVE")) {
+            console.error("ERRO CRÍTICO: config.js não carregado ou chaves do Firebase não configuradas.");
             document.body.innerHTML = "<h1>Erro Crítico: O arquivo js/config.js não foi configurado. Cole suas chaves do Firebase.</h1>";
             return;
         }
 
         try {
+            // CORREÇÃO V2.5: Usa a chave do 'window'
             if (!firebase.apps.length) {
-                firebase.initializeApp(firebaseConfig);
+                firebase.initializeApp(window.firebaseConfig);
             }
         } catch (e) {
             console.error('Falha ao inicializar Firebase:', e);
@@ -557,6 +559,7 @@ const AppPrincipal = {
 
     // Adaptado do Kumon-IA
     uploadFileToCloudinary: async (file) => {
+        // CORREÇÃO V2.5: Lê a config do 'window'
         if (!window.CLOUDINARY_CONFIG || !window.CLOUDINARY_CONFIG.cloudName || !window.CLOUDINARY_CONFIG.uploadPreset || window.CLOUDINARY_CONFIG.cloudName.includes("SEU_CLOUD_NAME")) {
             throw new Error("Cloudinary não está configurado em js/config.js");
         }
@@ -575,7 +578,8 @@ const AppPrincipal = {
 
     // Adaptado do Kumon-IA
     callGeminiAPI: async (prompt) => {
-        if (!window.GEMINI_API_KEY || window.GEMINI_API_KEY.includes("AIzaSyDuAA1HAwu4UlLUcqI5pla8nJn-Ue3esJg")) {
+        // CORREÇÃO V2.5: Lê a chave do 'window' e verifica o placeholder CORRETO
+        if (!window.GEMINI_API_KEY || window.GEMINI_API_KEY.includes("COLE_SUA_CHAVE_GEMINI_AQUI")) {
             throw new Error("API Key do Gemini não configurada em js/config.js");
         }
         
@@ -603,7 +607,7 @@ const AppPrincipal = {
 };
 
 // ===================================================================
-// 2. AuthLogic (Lógica da index.html - Agora dentro do app.js)
+// 2. AuthLogic (Lógica da index.html - MOVIDO PARA CÁ NA V2.4)
 // ===================================================================
 const AuthLogic = {
     auth: null,
@@ -744,5 +748,7 @@ const AuthLogic = {
     }
 };
 
-// =l= Inicia o Cérebro Principal (ou a AuthLogic) =l=
+
+// =l= Inicia o Cérebro Principal =l=
+// O DOMContentLoaded vai disparar a função init() do AppPrincipal
 document.addEventListener('DOMContentLoaded', AppPrincipal.init);
