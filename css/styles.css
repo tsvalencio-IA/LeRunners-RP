@@ -1,0 +1,717 @@
+/* =================================================================== */
+/* 1. RESET E VARIÁVEIS GLOBAIS
+/* =================================================================== */
+:root {
+    --primary-color: #00008B; /* Dark Blue */
+    --secondary-color: #4169E1; /* Royal Blue */
+    --danger-color: #DC3545;
+    --success-color: #28a745;
+    --warning-color: #ffc107;
+    --light-gray: #f4f5f7;
+    --text-color: #333;
+    --text-light: #667;
+    --border-color: #e0e0e0;
+    --border-radius: 8px;
+    --shadow: 0 4px 12px rgba(0,0,0,0.08);
+    --white: #ffffff; /* CORREÇÃO (V2.1) */
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+body {
+    background-color: var(--light-gray);
+    color: var(--text-color);
+    line-height: 1.6;
+}
+
+.hidden {
+    display: none !important;
+}
+
+h2 { color: var(--primary-color); }
+.subtitle {
+    color: var(--text-light);
+    margin-bottom: 1.5rem;
+    text-align: center;
+}
+hr { border: 0; height: 1px; background-color: var(--border-color); margin: 1.5rem 0; }
+fieldset {
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    padding: 1rem;
+    margin-bottom: 1rem;
+}
+legend {
+    font-weight: 600;
+    color: var(--primary-color);
+    padding: 0 0.5rem;
+    margin-left: 0.5rem;
+}
+
+/* =================================================================== */
+/* 2. COMPONENTES REUTILIZÁVEIS (Botões, Formulários, etc)
+/* =================================================================== */
+.btn {
+    display: inline-flex;
+    width: 100%;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.85rem 1rem;
+    border: none;
+    border-radius: var(--border-radius);
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: 700;
+    text-align: center;
+    transition: all 0.3s ease;
+    text-transform: uppercase;
+    text-decoration: none;
+}
+
+.btn-primary { background-color: var(--primary-color); color: #fff; }
+.btn-primary:hover:not(:disabled) { background-color: #00005a; transform: translateY(-2px); }
+
+.btn-secondary { background-color: var(--secondary-color); color: #fff; }
+.btn-secondary:hover:not(:disabled) { background-color: #2a4ac8; }
+
+.btn-danger { background-color: var(--danger-color); color: #fff; }
+.btn-danger:hover:not(:disabled) { background-color: #a71d2a; }
+
+.btn-success { background-color: var(--success-color); color: #fff; }
+.btn-success:hover:not(:disabled) { background-color: #1e7e34; }
+
+.btn-small { padding: 0.35rem 0.6rem; font-size: 0.8rem; width: auto; }
+
+.btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* NOVO: Botões de Navegação (V2) */
+.btn-nav {
+    background-color: transparent;
+    color: var(--text-light);
+    text-transform: none;
+    font-size: 0.9rem;
+    width: auto;
+    padding: 0.5rem 1rem;
+}
+.btn-nav.active,
+.btn-nav:hover {
+    background-color: var(--light-gray);
+    color: var(--primary-color);
+}
+.btn-nav i {
+    font-size: 1.2rem;
+}
+
+.panel {
+    background: #fff;
+    border-radius: var(--border-radius);
+    padding: 1.5rem;
+    box-shadow: var(--shadow);
+    margin-top: 1.5rem;
+}
+
+.form-group {
+    margin-bottom: 1rem;
+}
+.form-group label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    font-size: 0.9rem;
+}
+.form-group input,
+.form-group textarea,
+.form-group select,
+.search-input {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    font-size: 1rem;
+    background-color: #fff;
+}
+/* NOVO (V2.3): Estilo para input[type=file] */
+.form-group input[type="file"] {
+    padding: 0.5rem;
+    font-size: 0.9rem;
+    background: var(--light-gray);
+    cursor: pointer;
+}
+
+.form-group textarea {
+    resize: vertical;
+}
+
+/* =================================================================== */
+/* 3. TELA DE LOGIN (index.html)
+/* =================================================================== */
+.login-page {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 20px;
+    background-color: #f0f2f5;
+}
+
+.login-container {
+    width: 100%;
+    max-width: 450px;
+    background-color: #fff;
+    padding: 2.5rem;
+    border-radius: var(--border-radius);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+}
+
+.logo {
+    display: block;
+    margin: 0 auto 1rem auto;
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+}
+
+.login-container h2 {
+    text-align: center;
+    margin-bottom: 0.25rem;
+}
+
+.input-icon {
+    position: relative;
+}
+.input-icon i {
+    position: absolute;
+    left: 15px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #999;
+}
+.input-icon input {
+    padding-left: 40px;
+}
+
+.error-message {
+    color: var(--danger-color);
+    font-size: 0.9rem;
+    text-align: center;
+    margin-top: 1rem;
+    min-height: 1.2em;
+}
+
+.toggle-link {
+    text-align: center;
+    margin-top: 1rem;
+    font-size: 0.9rem;
+}
+.toggle-link a {
+    color: var(--secondary-color);
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+/* Mensagem de Pendente */
+#pending-view {
+    text-align: center;
+    border-top: 4px solid var(--warning-color);
+}
+#pending-view h3 {
+    color: var(--warning-color);
+    margin-bottom: 1rem;
+}
+#pending-view button {
+    width: auto;
+    margin-top: 1rem;
+}
+
+/* =================================================================== */
+/* 4. TELA DA PLATAFORMA (app.html)
+/* =================================================================== */
+.loader-container {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+}
+.loader {
+    border: 6px solid var(--light-gray);
+    border-top: 6px solid var(--primary-color);
+    border-radius: 50%;
+    width: 60px;
+    height: 60px;
+    animation: spin 1s linear infinite;
+    margin-bottom: 1rem;
+}
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.app-header {
+    background-color: #fff;
+    padding: 1rem 2rem;
+    box-shadow: var(--shadow);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+}
+.app-header h1 {
+    color: var(--primary-color);
+    font-size: 1.5rem;
+}
+.app-header nav {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem; /* Reduzido */
+}
+.user-display {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--text-light);
+    text-transform: capitalize;
+    margin-left: 1rem;
+    border-left: 1px solid var(--border-color);
+    padding-left: 1rem;
+}
+.app-header #logoutButton {
+    width: auto;
+    padding: 0.5rem 1rem;
+}
+
+.app-main {
+    max-width: 1400px;
+    margin: 2rem auto;
+    padding: 0 2rem; 
+}
+
+/* =================================================================== */
+/* 5. PAINEL ADMIN (V2)
+/* =================================================================== */
+.admin-dashboard h2,
+.atleta-dashboard h2,
+.feed-dashboard h2 {
+    border-bottom: 2px solid var(--border-color);
+    padding-bottom: 0.5rem;
+    margin-bottom: 1rem;
+}
+.admin-dashboard h2 i,
+.atleta-dashboard h2 i,
+.feed-dashboard h2 i {
+    margin-right: 0.5rem;
+}
+
+/* Painel de Aprovação */
+.approval-panel {
+    border-left: 4px solid var(--warning-color);
+}
+.approval-panel h3 {
+    color: var(--warning-color);
+}
+.pending-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem;
+    border-bottom: 1px solid var(--border-color);
+}
+.pending-item:last-child {
+    border-bottom: none;
+}
+.pending-item-info {
+    font-size: 0.9rem;
+}
+.pending-item-info strong {
+    color: var(--primary-color);
+}
+.pending-item-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+/* Layout Admin */
+.admin-layout {
+    display: grid;
+    grid-template-columns: 350px 1fr;
+    gap: 1.5rem;
+    align-items: flex-start;
+}
+
+.athlete-list-container {
+    max-height: 80vh;
+    overflow-y: auto;
+}
+.athlete-list-container h3 { margin-bottom: 1rem; }
+
+.search-input {
+    margin-bottom: 1rem;
+    padding-left: 1rem;
+}
+
+.athlete-list-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    margin-bottom: 0.5rem;
+    cursor: pointer;
+    transition: all 0.2s ease-in-out;
+    border-left: 4px solid transparent;
+}
+.athlete-list-item:hover {
+    background-color: #fcfcfc;
+    border-left-color: var(--secondary-color);
+}
+.athlete-list-item.selected {
+    background-color: var(--light-gray);
+    color: var(--primary-color);
+    border-color: var(--secondary-color);
+    border-left-width: 4px;
+}
+.athlete-list-item span {
+    font-weight: 600;
+}
+
+.form-minimal {
+    background: var(--light-gray);
+    padding: 1rem;
+    border-radius: var(--border-radius);
+    border: 1px solid var(--border-color);
+}
+
+/* =================================================================== */
+/* 6. PAINEL ATLETA (V2)
+/* =================================================================== */
+.atleta-dashboard #atleta-workouts-container {
+    max-width: 800px;
+    margin: 1.5rem 0;
+}
+.atleta-dashboard .subtitle {
+    text-align: left;
+    margin-bottom: 0.5rem;
+}
+
+/* =================================================================== */
+/* 7. CARD DE TREINO (V2 - Atualizado)
+/* =================================================================== */
+.workout-card {
+    background: #fff;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    margin-bottom: 1rem;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+/* Deixa o card do atleta clicável */
+.atleta-dashboard .workout-card {
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+.atleta-dashboard .workout-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow);
+}
+
+.workout-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 1rem 0.5rem 1rem;
+}
+.workout-card-header .date {
+    font-weight: 700;
+    color: var(--primary-color);
+    font-size: 1.1rem;
+}
+.workout-card-header .title {
+    font-weight: 600;
+    font-size: 1.1rem;
+}
+.workout-card-body {
+    padding: 0.5rem 1rem 1rem 1rem;
+}
+.workout-card-body p {
+    white-space: pre-wrap;
+    font-family: monospace;
+    background: var(--light-gray);
+    padding: 0.75rem;
+    border-radius: 4px;
+    color: #333;
+}
+/* NOVO: Feedback do atleta (V2) */
+.workout-card-body .feedback-text {
+    border-left: 3px solid var(--secondary-color);
+    background: #f0f5ff;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    white-space: pre-wrap;
+    font-style: italic;
+    padding: 0.5rem 0.75rem;
+    margin-top: 0.5rem;
+}
+/* NOVO (V2.3): Imagem do Treino */
+.workout-card-body .workout-image {
+    width: 100%;
+    max-height: 400px;
+    object-fit: cover;
+    border-radius: var(--border-radius);
+    margin-top: 1rem;
+    border: 1px solid var(--border-color);
+}
+
+
+.status-tag {
+    font-size: 0.75rem;
+    padding: 0.2rem 0.4rem;
+    border-radius: 4px;
+    color: #fff;
+    text-transform: capitalize;
+    font-weight: 600;
+}
+.status-tag.planejado { background-color: var(--text-light); }
+.status-tag.realizado { background-color: var(--success-color); }
+.status-tag.realizado_parcial { background-color: var(--warning-color); color: #333; }
+.status-tag.nao_realizado { background-color: var(--danger-color); }
+
+
+/* NOVO: Ações e Comentários (V2) */
+.workout-card-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 1rem 0.75rem 1rem;
+    border-top: 1px solid var(--border-color);
+    background-color: #fdfdfd;
+}
+.workout-actions {
+    display: flex;
+    gap: 1rem;
+}
+.action-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-light);
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+.action-btn:hover {
+    color: var(--primary-color);
+}
+.action-btn i {
+    font-size: 1.2rem;
+}
+.action-btn.liked {
+    color: var(--danger-color);
+}
+/* NOVO (V2.3): Botão de contagem de curtidas */
+.like-count-btn {
+    cursor: pointer;
+}
+.like-count-btn:hover {
+    text-decoration: underline;
+}
+
+/* =================================================================== */
+/* 8. FEED SOCIAL (V2)
+/* =================================================================== */
+.feed-dashboard {
+    max-width: 800px;
+    margin: 0 auto;
+}
+.feed-list .workout-card {
+    /* O card de treino é reutilizado no feed */
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+.feed-list .workout-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow);
+}
+.feed-list .workout-card-header {
+    /* NOVO: Adiciona nome do atleta no feed */
+    display: block;
+}
+.feed-list .athlete-name {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--secondary-color);
+}
+
+
+/* =================================================================== */
+/* 9. MODAL (V2)
+/* =================================================================== */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+    padding: 20px;
+}
+.modal-content {
+    background: var(--white);
+    border-radius: var(--border-radius);
+    width: 100%;
+    max-width: 600px;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+}
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid var(--border-color);
+}
+.modal-header h3 {
+    color: var(--primary-color);
+}
+.close-btn {
+    background: none;
+    border: none;
+    font-size: 2rem;
+    cursor: pointer;
+    color: var(--text-light);
+}
+.close-btn:hover {
+    color: var(--danger-color);
+}
+.modal-body {
+    padding: 1.5rem;
+    overflow-y: auto;
+}
+
+/* Comentários (V2) */
+.comments-list {
+    max-height: 200px;
+    overflow-y: auto;
+    margin-bottom: 1rem;
+    padding: 0.5rem;
+    background: var(--light-gray);
+    border-radius: 4px;
+}
+.comment-item {
+    font-size: 0.9rem;
+    border-bottom: 1px solid var(--border-color);
+    padding: 0.5rem 0;
+}
+.comment-item:last-child {
+    border-bottom: none;
+}
+.comment-item strong {
+    color: var(--primary-color);
+}
+.comment-item span {
+    font-size: 0.75rem;
+    color: var(--text-light);
+    margin-left: 0.5rem;
+}
+.comment-form {
+    display: flex;
+    gap: 0.5rem;
+}
+.comment-form input {
+    flex: 1;
+}
+.comment-form button {
+    width: auto;
+}
+
+/* NOVO (V2.3): Modal "Quem Curtiu" */
+#who-liked-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    max-height: 300px;
+    overflow-y: auto;
+}
+#who-liked-list li {
+    padding: 0.5rem;
+    font-weight: 600;
+    border-bottom: 1px solid var(--border-color);
+}
+#who-liked-list li:last-child {
+    border-bottom: none;
+}
+
+
+/* =================================================================== */
+/* 10. RESPONSIVIDADE
+/* =================================================================== */
+@media (max-width: 900px) {
+    .admin-layout {
+        grid-template-columns: 1fr;
+    }
+    .athlete-list-container {
+        max-height: 300px; /* Limita altura em telas pequenas */
+    }
+}
+
+@media (max-width: 600px) {
+    .app-header {
+        flex-direction: column;
+        gap: 0.5rem;
+        padding: 1rem;
+    }
+    .app-header nav {
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+    .user-display {
+        border-left: none;
+        padding-left: 0;
+        margin-left: 0;
+        width: 100%;
+        text-align: center;
+        border-top: 1px solid var(--border-color);
+        padding-top: 0.5rem;
+    }
+    .app-main {
+        padding: 1rem;
+    }
+    .login-container {
+        padding: 1.5rem;
+    }
+    .panel {
+        padding: 1rem;
+    }
+    .pending-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+    .pending-item-actions {
+        width: 100%;
+        gap: 1rem;
+    }
+    .pending-item-actions .btn {
+        flex: 1;
+    }
+    /* Nav Botões Mobile */
+    .btn-nav span {
+        display: none; /* Esconde o texto, mostra só ícone */
+    }
+}
