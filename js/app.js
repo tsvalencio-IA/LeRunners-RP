@@ -575,7 +575,7 @@ const AppPrincipal = {
 
     // Adaptado do Kumon-IA
     callGeminiAPI: async (prompt) => {
-        if (!window.GEMINI_API_KEY || window.GEMINI_API_KEY.includes("COLE_SUA_CHAVE")) {
+        if (!window.GEMINI_API_KEY || window.GEMINI_API_KEY.includes("AIzaSyDuAA1HAwu4UlLUcqI5pla8nJn-Ue3esJg")) {
             throw new Error("API Key do Gemini não configurada em js/config.js");
         }
         
