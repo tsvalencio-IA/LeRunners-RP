@@ -13,7 +13,7 @@ const firebaseConfig = {
 
 // --- Configuração do GOOGLE GEMINI API (MÓDULO 4 - IA) ---
 // ATENÇÃO: Chave exposta. Use restrições de API no Google Cloud.
-const GEMINI_API_KEY = "COLE_SUA_CHAVE_GEMINI_AQUI";
+const GEMINI_API_KEY = "AIzaSyDuAA1HAwu4UlLUcqI5pla8nJn-Ue3esJg";
 
 // --- Configuração do CLOUDINARY (MÓDULO 4 - Fotos) ---
 // Crie uma conta no Cloudinary e um "Upload Preset"
