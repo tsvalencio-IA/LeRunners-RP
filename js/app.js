@@ -1,0 +1,748 @@
+/* =================================================================== */
+/* ARQUIVO DE LÓGICA UNIFICADO (V2.4 - CÉREBRO E AUTH)
+/* ARQUITETURA: Refatorada (app.js + panels.js)
+/* =================================================================== */
+
+// ===================================================================
+// 1. AppPrincipal (O Cérebro)
+// ===================================================================
+const AppPrincipal = {
+    state: {
+        currentUser: null, // O objeto 'user' do Auth
+        userData: null,    // O perfil de '/users/' (name, role)
+        db: null,
+        auth: null,
+        listeners: {},     // Para limpar listeners do Firebase
+        currentView: 'planilha', // 'planilha' ou 'feed'
+        adminUIDs: {},     // Cache dos UIDs de admins
+        publicProfiles: {}, // NOVO (V2.3): Cache dos perfis públicos
+        modal: {
+            isOpen: false,
+            currentWorkoutId: null,
+            currentOwnerId: null
+        }
+    },
+
+    init: () => {
+        console.log("Iniciando AppPrincipal V2.4 (Cérebro)...");
+        
+        if (typeof firebaseConfig === 'undefined' || firebaseConfig.apiKey.includes("COLE_SUA_CHAVE")) {
+            console.error("ERRO CRÍTICO: config.js não carregado.");
+            document.body.innerHTML = "<h1>Erro Crítico: O arquivo js/config.js não foi configurado. Cole suas chaves do Firebase.</h1>";
+            return;
+        }
+
+        try {
+            if (!firebase.apps.length) {
+                firebase.initializeApp(firebaseConfig);
+            }
+        } catch (e) {
+            console.error('Falha ao inicializar Firebase:', e);
+            document.body.innerHTML = "<h1>Erro Crítico: Falha ao conectar com o Firebase. Verifique seu config.js.</h1>";
+            return;
+        }
+
+        AppPrincipal.state.auth = firebase.auth();
+        AppPrincipal.state.db = firebase.database();
+
+        // Roteamento: O script está na index.html ou app.html?
+        if (document.getElementById('login-form')) {
+            console.log("Modo: Autenticação (index.html)");
+            AuthLogic.init(AppPrincipal.state.auth, AppPrincipal.state.db);
+        } else if (document.getElementById('app-container')) {
+            console.log("Modo: Plataforma (app.html)");
+            AppPrincipal.initPlatform();
+        }
+    },
+
+    // Inicia a lógica da plataforma (app.html)
+    initPlatform: () => {
+        AppPrincipal.elements = {
+            loader: document.getElementById('loader'),
+            appContainer: document.getElementById('app-container'),
+            userDisplay: document.getElementById('userDisplay'),
+            logoutButton: document.getElementById('logoutButton'),
+            mainContent: document.getElementById('app-main-content'),
+            
+            // Navegação V2
+            navPlanilhaBtn: document.getElementById('nav-planilha-btn'),
+            navFeedBtn: document.getElementById('nav-feed-btn'),
+            
+            // Modal Feedback (V2.3)
+            feedbackModal: document.getElementById('feedback-modal'),
+            closeFeedbackModal: document.getElementById('close-feedback-modal'),
+            feedbackModalTitle: document.getElementById('feedback-modal-title'),
+            feedbackForm: document.getElementById('feedback-form'),
+            workoutStatusSelect: document.getElementById('workout-status'),
+            workoutFeedbackText: document.getElementById('workout-feedback-text'),
+            photoUploadInput: document.getElementById('photo-upload-input'), // NOVO (V2.3)
+            saveFeedbackBtn: document.getElementById('save-feedback-btn'), // NOVO (V2.3)
+            
+            // Comentários V2
+            commentForm: document.getElementById('comment-form'),
+            commentInput: document.getElementById('comment-input'),
+            commentsList: document.getElementById('comments-list'),
+
+            // Modal Log Atividade (V2.3)
+            logActivityModal: document.getElementById('log-activity-modal'),
+            closeLogActivityModal: document.getElementById('close-log-activity-modal'),
+            logActivityForm: document.getElementById('log-activity-form'),
+
+            // Modal Quem Curtiu (V2.3)
+            whoLikedModal: document.getElementById('who-liked-modal'),
+            closeWhoLikedModal: document.getElementById('close-who-liked-modal'),
+            whoLikedList: document.getElementById('who-liked-list'),
+
+            // Modal Análise IA (V2.3)
+            iaAnalysisModal: document.getElementById('ia-analysis-modal'),
+            closeIaAnalysisModal: document.getElementById('close-ia-analysis-modal'),
+            iaAnalysisOutput: document.getElementById('ia-analysis-output'),
+        };
+        
+        // Listeners de Navegação
+        AppPrincipal.elements.logoutButton.addEventListener('click', AppPrincipal.handleLogout);
+        AppPrincipal.elements.navPlanilhaBtn.addEventListener('click', () => AppPrincipal.navigateTo('planilha'));
+        AppPrincipal.elements.navFeedBtn.addEventListener('click', () => AppPrincipal.navigateTo('feed'));
+        
+        // Listeners do Modal Feedback
+        AppPrincipal.elements.closeFeedbackModal.addEventListener('click', AppPrincipal.closeFeedbackModal);
+        AppPrincipal.elements.feedbackForm.addEventListener('submit', AppPrincipal.handleFeedbackSubmit);
+        AppPrincipal.elements.commentForm.addEventListener('submit', AppPrincipal.handleCommentSubmit);
+        AppPrincipal.elements.feedbackModal.addEventListener('click', (e) => {
+            if (e.target === AppPrincipal.elements.feedbackModal) AppPrincipal.closeFeedbackModal();
+        });
+
+        // Listeners Modal Log Atividade (V2.3)
+        AppPrincipal.elements.closeLogActivityModal.addEventListener('click', AppPrincipal.closeLogActivityModal);
+        AppPrincipal.elements.logActivityForm.addEventListener('submit', AppPrincipal.handleLogActivitySubmit);
+        AppPrincipal.elements.logActivityModal.addEventListener('click', (e) => {
+            if (e.target === AppPrincipal.elements.logActivityModal) AppPrincipal.closeLogActivityModal();
+        });
+
+        // Listeners Modal Quem Curtiu (V2.3)
+        AppPrincipal.elements.closeWhoLikedModal.addEventListener('click', AppPrincipal.closeWhoLikedModal);
+        AppPrincipal.elements.whoLikedModal.addEventListener('click', (e) => {
+            if (e.target === AppPrincipal.elements.whoLikedModal) AppPrincipal.closeWhoLikedModal();
+        });
+
+        // Listeners Modal IA (V2.3)
+        AppPrincipal.elements.closeIaAnalysisModal.addEventListener('click', AppPrincipal.closeIaAnalysisModal);
+        AppPrincipal.elements.iaAnalysisModal.addEventListener('click', (e) => {
+            if (e.target === AppPrincipal.elements.iaAnalysisModal) AppPrincipal.closeIaAnalysisModal();
+        });
+
+
+        // O Guardião do app.html
+        AppPrincipal.state.auth.onAuthStateChanged(AppPrincipal.handlePlatformAuthStateChange);
+    },
+
+    // NOVO (V2.3): Carrega caches de Admins e Perfis Públicos
+    loadCaches: () => {
+        const adminsRef = AppPrincipal.state.db.ref('admins');
+        adminsRef.once('value', snapshot => {
+            AppPrincipal.state.adminUIDs = snapshot.val() || {};
+            console.log("Cache de Admins carregado:", Object.keys(AppPrincipal.state.adminUIDs));
+        });
+
+        const profilesRef = AppPrincipal.state.db.ref('publicProfiles');
+        profilesRef.once('value', snapshot => {
+            AppPrincipal.state.publicProfiles = snapshot.val() || {};
+            console.log("Cache de Perfis Públicos carregado.");
+        });
+    },
+
+    // O Guardião (só roda no app.html)
+    handlePlatformAuthStateChange: (user) => {
+        if (!user) {
+            console.log("Guardião (Plataforma): Acesso negado. Redirecionando para login.");
+            AppPrincipal.cleanupListeners();
+            window.location.href = 'index.html';
+            return;
+        }
+
+        AppPrincipal.state.currentUser = user;
+        const uid = user.uid;
+        
+        // NOVO (V2.3): Carrega caches
+        AppPrincipal.loadCaches();
+
+        // 1. É Admin?
+        AppPrincipal.state.db.ref('admins/' + uid).once('value', adminSnapshot => {
+            if (adminSnapshot.exists() && adminSnapshot.val() === true) {
+                AppPrincipal.state.db.ref('users/' + uid).once('value', userSnapshot => {
+                    let adminName = userSnapshot.exists() ? userSnapshot.val().name : user.email;
+                    AppPrincipal.state.userData = { name: adminName, role: 'admin', uid: uid };
+                    AppPrincipal.elements.userDisplay.textContent = `${adminName} (Coach)`;
+                    AppPrincipal.navigateTo('planilha'); // Coach começa na planilha
+                });
+                return;
+            }
+
+            // 2. É Atleta Aprovado?
+            AppPrincipal.state.db.ref('users/' + uid).once('value', userSnapshot => {
+                if (userSnapshot.exists()) {
+                    AppPrincipal.state.userData = { ...userSnapshot.val(), uid: uid };
+                    AppPrincipal.elements.userDisplay.textContent = `${AppPrincipal.state.userData.name}`;
+                    AppPrincipal.navigateTo('planilha'); // Atleta começa na planilha
+                } else {
+                    console.warn("Status: PENDENTE/REJEITADO. Voltando ao login.");
+                    AppPrincipal.handleLogout(); 
+                }
+            });
+        });
+    },
+
+    // O Roteador (V2)
+    navigateTo: (page) => {
+        const { mainContent, loader, appContainer, navPlanilhaBtn, navFeedBtn } = AppPrincipal.elements;
+        mainContent.innerHTML = ""; 
+        AppPrincipal.cleanupListeners();
+        AppPrincipal.state.currentView = page;
+
+        // Atualiza botões de navegação
+        navPlanilhaBtn.classList.toggle('active', page === 'planilha');
+        navFeedBtn.classList.toggle('active', page === 'feed');
+
+        // VERIFICA SE OS PAINÉIS (de panels.js) ESTÃO CARREGADOS
+        if (typeof AdminPanel === 'undefined' || typeof AtletaPanel === 'undefined' || typeof FeedPanel === 'undefined') {
+            console.error("ERRO CRÍTICO: js/panels.js não foi carregado a tempo.");
+            mainContent.innerHTML = "<h1>Erro ao carregar módulos. Recarregue a página.</h1>";
+            return;
+        }
+
+        if (page === 'planilha') {
+            // Rota da Planilha (depende da role)
+            const role = AppPrincipal.state.userData.role;
+            if (role === 'admin') {
+                const adminTemplate = document.getElementById('admin-panel-template').content.cloneNode(true);
+                mainContent.appendChild(adminTemplate);
+                AdminPanel.init(AppPrincipal.state.currentUser, AppPrincipal.state.db);
+            } else {
+                const atletaTemplate = document.getElementById('atleta-panel-template').content.cloneNode(true);
+                mainContent.appendChild(atletaTemplate);
+                const welcomeEl = document.getElementById('atleta-welcome-name');
+                if (welcomeEl) {
+                    welcomeEl.textContent = AppPrincipal.state.userData.name;
+                }
+                AtletaPanel.init(AppPrincipal.state.currentUser, AppPrincipal.state.db);
+            }
+        } 
+        else if (page === 'feed') {
+            // Rota do Feed (igual para todos)
+            const feedTemplate = document.getElementById('feed-panel-template').content.cloneNode(true);
+            mainContent.appendChild(feedTemplate);
+            FeedPanel.init(AppPrincipal.state.currentUser, AppPrincipal.state.db);
+        }
+
+        loader.classList.add('hidden');
+        appContainer.classList.remove('hidden');
+    },
+
+    handleLogout: () => {
+        console.log("Saindo...");
+        AppPrincipal.state.auth.signOut().catch(err => console.error("Erro ao sair:", err));
+    },
+
+    cleanupListeners: () => {
+        Object.values(AppPrincipal.state.listeners).forEach(listener => {
+            if (listener && typeof listener.off === 'function') {
+                listener.off();
+            }
+        });
+        AppPrincipal.state.listeners = {};
+        console.log("Listeners do Firebase limpos.");
+    },
+    
+    // ===================================================================
+    // MÓDULO 3/4: Lógica dos Modais (V2.3)
+    // ===================================================================
+    
+    // ----- Modal Feedback (V2.3) -----
+    openFeedbackModal: (workoutId, ownerId, workoutTitle) => {
+        const { feedbackModal, feedbackModalTitle, workoutStatusSelect, workoutFeedbackText, commentsList, commentInput, photoUploadInput, saveFeedbackBtn } = AppPrincipal.elements;
+        
+        console.log(`Abrindo modal para treino: ${workoutId} (Dono: ${ownerId})`);
+        
+        // Salva o estado atual no Modal
+        AppPrincipal.state.modal.isOpen = true;
+        AppPrincipal.state.modal.currentWorkoutId = workoutId;
+        AppPrincipal.state.modal.currentOwnerId = ownerId;
+        
+        feedbackModalTitle.textContent = workoutTitle || "Feedback do Treino";
+        
+        // Limpa o modal
+        workoutStatusSelect.value = 'planejado';
+        workoutFeedbackText.value = '';
+        photoUploadInput.value = null;
+        commentsList.innerHTML = "<p>Carregando...</p>";
+        commentInput.value = '';
+        saveFeedbackBtn.disabled = false;
+        saveFeedbackBtn.textContent = "Salvar Feedback";
+        
+        // 1. Carrega os dados do treino (status e feedback)
+        const workoutRef = AppPrincipal.state.db.ref(`data/${ownerId}/workouts/${workoutId}`);
+        workoutRef.once('value', snapshot => {
+            if (snapshot.exists()) {
+                const data = snapshot.val();
+                workoutStatusSelect.value = data.status || 'planejado';
+                workoutFeedbackText.value = data.feedback || '';
+            } else {
+                // Tenta buscar nos publicWorkouts se for um treino manual
+                AppPrincipal.state.db.ref(`publicWorkouts/${workoutId}`).once('value', publicSnapshot => {
+                     if (publicSnapshot.exists()) {
+                        const data = publicSnapshot.val();
+                        workoutStatusSelect.value = data.status || 'planejado';
+                        workoutFeedbackText.value = data.feedback || '';
+                     }
+                });
+            }
+        });
+        
+        // 2. Carrega os Comentários (do nó /workoutComments/)
+        const commentsRef = AppPrincipal.state.db.ref(`workoutComments/${workoutId}`);
+        AppPrincipal.state.listeners['modalComments'] = commentsRef; // Registra o listener
+        
+        commentsRef.orderByChild('timestamp').on('value', snapshot => {
+            commentsList.innerHTML = "";
+            if (!snapshot.exists()) {
+                commentsList.innerHTML = "<p>Nenhum comentário ainda.</p>";
+                return;
+            }
+            
+            const isCurrentUserAdmin = AppPrincipal.state.userData.role === 'admin';
+            // Vê se o usuário logado é o dono do treino
+            const isCurrentUserOwner = AppPrincipal.state.currentUser.uid === AppPrincipal.state.modal.currentOwnerId;
+
+            snapshot.forEach(childSnapshot => {
+                const data = childSnapshot.val();
+                const isCommentFromAdmin = AppPrincipal.state.adminUIDs.hasOwnProperty(data.uid);
+
+                // REGRA DE PRIVACIDADE:
+                // Se o usuário logado NÃO for o dono do treino E NÃO for admin...
+                if (!isCurrentUserOwner && !isCurrentUserAdmin) {
+                    // ...então esconda comentários de admins.
+                    if (isCommentFromAdmin) {
+                        return; 
+                    }
+                }
+
+                const item = document.createElement('div');
+                item.className = 'comment-item';
+                const date = new Date(data.timestamp).toLocaleString('pt-BR', { timeStyle: 'short', dateStyle: 'short' });
+                item.innerHTML = `
+                    <p><strong>${data.name}:</strong> ${data.text}</p>
+                    <span>${date}</span>
+                `;
+                commentsList.appendChild(item);
+            });
+            commentsList.scrollTop = commentsList.scrollHeight; // Rola para o final
+        });
+        
+        feedbackModal.classList.remove('hidden');
+    },
+    
+    closeFeedbackModal: () => {
+        AppPrincipal.state.modal.isOpen = false;
+        AppPrincipal.elements.feedbackModal.classList.add('hidden');
+        if (AppPrincipal.state.listeners['modalComments']) {
+            AppPrincipal.state.listeners['modalComments'].off();
+            delete AppPrincipal.state.listeners['modalComments'];
+        }
+    },
+    
+    // ATUALIZADO (V2.3): Salva o "Status", "Feedback" e "Foto"
+    handleFeedbackSubmit: async (e) => {
+        e.preventDefault();
+        const { workoutStatusSelect, workoutFeedbackText, photoUploadInput, saveFeedbackBtn } = AppPrincipal.elements;
+        const { currentWorkoutId, currentOwnerId } = AppPrincipal.state.modal;
+        
+        if (currentOwnerId !== AppPrincipal.state.currentUser.uid) {
+            alert("Você só pode salvar o feedback dos seus próprios treinos.");
+            return;
+        }
+
+        saveFeedbackBtn.disabled = true;
+        saveFeedbackBtn.textContent = "Salvando...";
+
+        try {
+            let imageUrl = null;
+            const file = photoUploadInput.files[0];
+            
+            // 1. Faz upload da imagem (se existir)
+            if (file) {
+                saveFeedbackBtn.textContent = "Enviando foto...";
+                imageUrl = await AppPrincipal.uploadFileToCloudinary(file);
+            }
+
+            // 2. Prepara dados
+            const feedbackData = {
+                status: workoutStatusSelect.value,
+                feedback: workoutFeedbackText.value,
+                realizadoAt: new Date().toISOString()
+            };
+            if (imageUrl) {
+                feedbackData.imageUrl = imageUrl;
+            }
+
+            const workoutRef = AppPrincipal.state.db.ref(`data/${currentOwnerId}/workouts/${currentWorkoutId}`);
+            
+            // 3. Atualiza o nó PRIVADO
+            saveFeedbackBtn.textContent = "Atualizando treino...";
+            await workoutRef.update(feedbackData);
+            
+            // 4. Atualiza o nó PÚBLICO
+            if (feedbackData.status !== 'planejado') {
+                const snapshot = await workoutRef.once('value');
+                const workoutData = snapshot.val();
+                
+                // Monta o objeto público apenas com os dados essenciais
+                const publicData = {
+                    ownerId: currentOwnerId,
+                    ownerName: AppPrincipal.state.userData.name,
+                    date: workoutData.date,
+                    title: workoutData.title,
+                    description: workoutData.description,
+                    status: workoutData.status,
+                    feedback: workoutData.feedback,
+                    realizadoAt: workoutData.realizadoAt,
+                    imageUrl: workoutData.imageUrl || null // Garante que o campo exista (ou seja nulo)
+                };
+                await AppPrincipal.state.db.ref(`publicWorkouts/${currentWorkoutId}`).set(publicData);
+            } else {
+                // Se voltou para "planejado", remove do feed público
+                await AppPrincipal.state.db.ref(`publicWorkouts/${currentWorkoutId}`).remove();
+            }
+
+            console.log("Feedback salvo e feed atualizado!");
+            AppPrincipal.closeFeedbackModal();
+
+        } catch (err) {
+            console.error("Erro ao salvar feedback:", err);
+            alert("Erro ao salvar: " + err.message);
+            saveFeedbackBtn.disabled = false;
+            saveFeedbackBtn.textContent = "Salvar Feedback";
+        }
+    },
+    
+    // ----- Modal Comentários (V2) -----
+    handleCommentSubmit: (e) => {
+        e.preventDefault();
+        const { commentInput } = AppPrincipal.elements;
+        const { currentWorkoutId } = AppPrincipal.state.modal;
+        const text = commentInput.value.trim();
+        
+        if (!text) return;
+
+        const commentData = {
+            uid: AppPrincipal.state.currentUser.uid,
+            name: AppPrincipal.state.userData.name,
+            text: text,
+            timestamp: firebase.database.ServerValue.TIMESTAMP
+        };
+        
+        AppPrincipal.state.db.ref(`workoutComments/${currentWorkoutId}`).push(commentData)
+            .then(() => {
+                commentInput.value = ""; // Limpa o input
+            })
+            .catch(err => alert("Erro ao enviar comentário: " + err.message));
+    },
+
+    // ----- Modal Log Atividade (V2.3) -----
+    openLogActivityModal: () => {
+        AppPrincipal.elements.logActivityForm.reset();
+        AppPrincipal.elements.logActivityModal.classList.remove('hidden');
+        // Define a data atual como padrão
+        document.getElementById('log-activity-date').value = new Date().toISOString().split('T')[0];
+    },
+
+    closeLogActivityModal: () => {
+        AppPrincipal.elements.logActivityModal.classList.add('hidden');
+    },
+
+    handleLogActivitySubmit: async (e) => {
+        e.preventDefault();
+        const btn = AppPrincipal.elements.logActivityForm.querySelector('button');
+        btn.disabled = true;
+
+        const athleteId = AppPrincipal.state.currentUser.uid;
+        
+        try {
+            const workoutData = {
+                date: document.getElementById('log-activity-date').value,
+                title: document.getElementById('log-activity-title').value,
+                description: `(${document.getElementById('log-activity-type').value})`, // Adiciona tipo na descrição
+                feedback: document.getElementById('log-activity-feedback').value,
+                createdBy: athleteId, // Atleta que criou
+                createdAt: new Date().toISOString(),
+                status: "realizado", // Já nasce realizado
+                realizadoAt: new Date().toISOString()
+                // imageUrl (ainda não implementado neste modal)
+            };
+            
+            if (!workoutData.date || !workoutData.title || !workoutData.feedback) {
+                 throw new Error("Data, Título e Feedback são obrigatórios.");
+            }
+
+            // 1. Salva no nó PRIVADO
+            const newWorkoutRef = await AppPrincipal.state.db.ref(`data/${athleteId}/workouts`).push(workoutData);
+            const newWorkoutId = newWorkoutRef.key;
+
+            // 2. Salva no nó PÚBLICO (para o feed)
+            const publicData = {
+                ownerId: athleteId,
+                ownerName: AppPrincipal.state.userData.name,
+                date: workoutData.date,
+                title: workoutData.title,
+                description: workoutData.description,
+                status: workoutData.status,
+                feedback: workoutData.feedback,
+                realizadoAt: workoutData.realizadoAt,
+                imageUrl: null // Sem imagem para Log Manual
+            };
+            await AppPrincipal.state.db.ref(`publicWorkouts/${newWorkoutId}`).set(publicData);
+
+            console.log("Atividade manual registrada e publicada no feed.");
+            AppPrincipal.closeLogActivityModal();
+
+        } catch (err) {
+            alert("Erro ao salvar atividade: " + err.message);
+        } finally {
+            btn.disabled = false;
+        }
+    },
+
+    // ----- Modal Quem Curtiu (V2.3) -----
+    openWhoLikedModal: (workoutId) => {
+        const { whoLikedModal, whoLikedList } = AppPrincipal.elements;
+        whoLikedList.innerHTML = "<li>Carregando...</li>";
+        whoLikedModal.classList.remove('hidden');
+
+        const likesRef = AppPrincipal.state.db.ref(`workoutLikes/${workoutId}`);
+        likesRef.once('value', snapshot => {
+            if (!snapshot.exists()) {
+                whoLikedList.innerHTML = "<li>Ninguém curtiu ainda.</li>";
+                return;
+            }
+
+            whoLikedList.innerHTML = ""; // Limpa o "Carregando"
+            const profiles = AppPrincipal.state.publicProfiles;
+            
+            snapshot.forEach(childSnapshot => {
+                const uid = childSnapshot.key;
+                const userName = profiles[uid] ? profiles[uid].name : "Usuário desconhecido";
+                const li = document.createElement('li');
+                li.textContent = userName;
+                whoLikedList.appendChild(li);
+            });
+        });
+    },
+
+    closeWhoLikedModal: () => {
+        AppPrincipal.elements.whoLikedModal.classList.add('hidden');
+    },
+
+    // ----- Modal Análise IA (V2.3) -----
+    openIaAnalysisModal: () => {
+        AppPrincipal.elements.iaAnalysisOutput.textContent = "Coletando dados do atleta...";
+        AppPrincipal.elements.iaAnalysisModal.classList.remove('hidden');
+    },
+
+    closeIaAnalysisModal: () => {
+        AppPrincipal.elements.iaAnalysisModal.classList.add('hidden');
+    },
+
+    // ===================================================================
+    // MÓDULO 4: Funções de IA (V2.3 - Base)
+    // ===================================================================
+
+    // Adaptado do Kumon-IA
+    uploadFileToCloudinary: async (file) => {
+        if (!window.CLOUDINARY_CONFIG || !window.CLOUDINARY_CONFIG.cloudName || !window.CLOUDINARY_CONFIG.uploadPreset || window.CLOUDINARY_CONFIG.cloudName.includes("SEU_CLOUD_NAME")) {
+            throw new Error("Cloudinary não está configurado em js/config.js");
+        }
+        
+        const f = new FormData(); 
+        f.append('file', file); 
+        f.append('upload_preset', window.CLOUDINARY_CONFIG.uploadPreset); 
+        f.append('folder', `lerunners/${AppPrincipal.state.currentUser.uid}`);
+        
+        const r = await fetch(`https://api.cloudinary.com/v1_1/${window.CLOUDINARY_CONFIG.cloudName}/upload`, { method: 'POST', body: f });
+        if (!r.ok) throw new Error("Falha no upload para Cloudinary.");
+        
+        const data = await r.json();
+        return data.secure_url; // Retorna a URL segura
+    },
+
+    // Adaptado do Kumon-IA
+    callGeminiAPI: async (prompt) => {
+        if (!window.GEMINI_API_KEY || window.GEMINI_API_KEY.includes("COLE_SUA_CHAVE")) {
+            throw new Error("API Key do Gemini não configurada em js/config.js");
+        }
+        
+        const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${window.GEMINI_API_KEY}`;
+        
+        const requestBody = {
+            "contents": [{ "parts": [{ "text": prompt }] }]
+            // "generationConfig": { "responseMimeType": "application/json" } // Usar se precisar de JSON
+        };
+
+        const response = await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(requestBody) });
+        
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(`Erro API Gemini: ${err.error.message}`);
+        }
+        
+        const data = await response.json();
+        if (!data.candidates || data.candidates.length === 0) {
+            throw new Error("A IA não retornou uma resposta.");
+        }
+        
+        return data.candidates[0].content.parts[0].text;
+    }
+};
+
+// ===================================================================
+// 2. AuthLogic (Lógica da index.html - Agora dentro do app.js)
+// ===================================================================
+const AuthLogic = {
+    auth: null,
+    db: null,
+    elements: {},
+
+    init: (auth, db) => {
+        console.log("AuthLogic V2.4: Inicializado.");
+        AuthLogic.auth = auth;
+        AuthLogic.db = db;
+        AuthLogic.elements = {
+            loginForm: document.getElementById('login-form'),
+            registerForm: document.getElementById('register-form'),
+            pendingView: document.getElementById('pending-view'),
+            pendingEmailDisplay: document.getElementById('pending-email-display'),
+            btnLogoutPending: document.getElementById('btn-logout-pending'),
+            loginErrorMsg: document.getElementById('login-error'),
+            registerErrorMsg: document.getElementById('register-error'),
+            toggleToRegister: document.getElementById('toggleToRegister'),
+            toggleToLogin: document.getElementById('toggleToLogin')
+        };
+        AuthLogic.elements.toggleToRegister.addEventListener('click', AuthLogic.handleToggle);
+        AuthLogic.elements.toggleToLogin.addEventListener('click', AuthLogic.handleToggle);
+        AuthLogic.elements.btnLogoutPending.addEventListener('click', () => AuthLogic.auth.signOut());
+        AuthLogic.elements.loginForm.addEventListener('submit', AuthLogic.handleLogin);
+        AuthLogic.elements.registerForm.addEventListener('submit', AuthLogic.handleRegister);
+        AuthLogic.auth.onAuthStateChanged(AuthLogic.handleLoginGuard);
+    },
+    showView: (view) => {
+        const { loginForm, registerForm, pendingView, toggleToRegister, toggleToLogin } = AuthLogic.elements;
+        loginForm.classList.add('hidden');
+        registerForm.classList.add('hidden');
+        pendingView.classList.add('hidden');
+        toggleToRegister.parentElement.classList.add('hidden');
+        toggleToLogin.parentElement.classList.add('hidden');
+        if (view === 'login') {
+            loginForm.classList.remove('hidden');
+            toggleToRegister.parentElement.classList.remove('hidden');
+        } else if (view === 'register') {
+            registerForm.classList.remove('hidden');
+            toggleToLogin.parentElement.classList.remove('hidden');
+        } else if (view === 'pending') {
+            pendingView.classList.remove('hidden');
+        }
+    },
+    handleToggle: (e) => {
+        e.preventDefault();
+        const view = e.target.id === 'toggleToRegister' ? 'register' : 'login';
+        AuthLogic.showView(view);
+        AuthLogic.elements.loginErrorMsg.textContent = "";
+        AuthLogic.elements.registerErrorMsg.textContent = "";
+    },
+    handleLogin: (e) => {
+        e.preventDefault();
+        const email = document.getElementById('loginEmail').value;
+        const password = document.getElementById('loginPassword').value;
+        const btn = AuthLogic.elements.loginForm.querySelector('button');
+        btn.disabled = true;
+        btn.textContent = "Verificando...";
+        AuthLogic.elements.loginErrorMsg.textContent = "";
+        AuthLogic.auth.signInWithEmailAndPassword(email, password)
+            .catch((error) => {
+                btn.disabled = false;
+                btn.textContent = "Entrar";
+                if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+                    AuthLogic.elements.loginErrorMsg.textContent = "Email ou senha incorretos.";
+                } else {
+                    AuthLogic.elements.loginErrorMsg.textContent = "Erro ao tentar entrar.";
+                }
+            });
+    },
+    handleRegister: (e) => {
+        e.preventDefault();
+        const name = document.getElementById('registerName').value;
+        const email = document.getElementById('registerEmail').value;
+        const password = document.getElementById('registerPassword').value;
+        const btn = AuthLogic.elements.registerForm.querySelector('button');
+        if (password.length < 6) {
+            AuthLogic.elements.registerErrorMsg.textContent = "A senha deve ter no mínimo 6 caracteres.";
+            return;
+        }
+        if (!name) {
+            AuthLogic.elements.registerErrorMsg.textContent = "O nome é obrigatório.";
+            return;
+        }
+        btn.disabled = true;
+        btn.textContent = "Enviando...";
+        AuthLogic.elements.registerErrorMsg.textContent = "";
+        AuthLogic.auth.createUserWithEmailAndPassword(email, password)
+            .then((userCredential) => {
+                const user = userCredential.user;
+                const pendingData = {
+                    name: name,
+                    email: email,
+                    requestDate: new Date().toISOString()
+                };
+                return AuthLogic.db.ref('pendingApprovals/' + user.uid).set(pendingData);
+            })
+            .catch((error) => {
+                btn.disabled = false;
+                btn.textContent = "Solicitar Acesso";
+                if (error.code === 'auth/email-already-in-use') {
+                    AuthLogic.elements.loginErrorMsg.textContent = "Email já cadastrado. Tente fazer login.";
+                    AuthLogic.showView('login');
+                } else {
+                    AuthLogic.elements.registerErrorMsg.textContent = "Erro ao criar sua conta.";
+                }
+            });
+    },
+    handleLoginGuard: (user) => {
+        if (user) {
+            const uid = user.uid;
+            AuthLogic.db.ref('admins/' + uid).once('value', adminSnapshot => {
+                if (adminSnapshot.exists() && adminSnapshot.val() === true) {
+                    window.location.href = 'app.html';
+                    return;
+                }
+                AuthLogic.db.ref('users/' + uid).once('value', userSnapshot => {
+                    if (userSnapshot.exists()) {
+                        window.location.href = 'app.html';
+                        return;
+                    }
+                    AuthLogic.db.ref('pendingApprovals/' + uid).once('value', pendingSnapshot => {
+                        if (pendingSnapshot.exists()) {
+                            AuthLogic.elements.pendingEmailDisplay.textContent = user.email;
+                            AuthLogic.showView('pending');
+                        } else {
+                            AuthLogic.elements.loginErrorMsg.textContent = "Sua conta foi rejeitada ou excluída.";
+                            AuthLogic.auth.signOut();
+                            AuthLogic.showView('login');
+                        }
+                    });
+                });
+            });
+        } else {
+            AuthLogic.showView('login');
+        }
+    }
+};
+
+// =l= Inicia o Cérebro Principal (ou a AuthLogic) =l=
+document.addEventListener('DOMContentLoaded', AppPrincipal.init);
