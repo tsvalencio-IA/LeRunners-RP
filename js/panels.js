@@ -1,22 +1,24 @@
 /* =================================================================== */
-/* PANELS.JS V4.0 - BLINDAGEM TOTAL (TRY/CATCH) + FINANCEIRO
-/* DIRETRIZ: Se um treino falhar, o próximo DEVE carregar.
+/* PANELS.JS V6.0 - ARQUIVO COMPLETO (TREINOS, ALUNOS, FEED)
+/* CONTÉM: Lógica V2 Restaurada + Blindagem de Erros + Splits + Mapas
 /* =================================================================== */
 
 const panels = {};
 
 // ===================================================================
-// 1. ADMIN PANEL (COACH)
+// 1. ADMIN PANEL (PAINEL DO PROFESSOR COMPLETO)
 // ===================================================================
 const AdminPanel = {
     state: { selectedAthleteId: null, athletes: {} },
     elements: {},
 
+    // Inicialização Completa
     init: (user, db) => {
-        console.log("AdminPanel V4.0: Init");
+        console.log("AdminPanel V6.0: Carregando Módulo Completo...");
         AdminPanel.state.db = db;
         AdminPanel.state.currentUser = user;
 
+        // Mapeamento de TODOS os elementos do DOM
         AdminPanel.elements = {
             list: document.getElementById('athlete-list'),
             search: document.getElementById('athlete-search'),
@@ -24,15 +26,16 @@ const AdminPanel = {
             name: document.getElementById('athlete-detail-name'),
             workouts: document.getElementById('workouts-list'),
             form: document.getElementById('add-workout-form'),
-            pendingList: document.getElementById('pending-list')
+            pendingList: document.getElementById('pending-list'),
+            iaHistoryList: document.getElementById('ia-history-list')
         };
 
-        // Binds de Busca
+        // Listeners de Busca
         if(AdminPanel.elements.search) {
             AdminPanel.elements.search.oninput = (e) => AdminPanel.renderList(e.target.value);
         }
         
-        // Binds do Formulário (Clonagem para limpar listeners antigos)
+        // Listeners do Formulário (Clonagem para segurança total contra duplicação)
         if(AdminPanel.elements.form) {
             const newForm = AdminPanel.elements.form.cloneNode(true);
             AdminPanel.elements.form.parentNode.replaceChild(newForm, AdminPanel.elements.form);
@@ -40,13 +43,15 @@ const AdminPanel = {
             AdminPanel.elements.form.addEventListener('submit', AdminPanel.handleAddWorkout);
         }
 
-        // Binds de Abas
+        // Listeners das Abas (Prescrever / IA)
         const tabs = document.querySelectorAll('.tab-btn');
         if(tabs) {
             tabs.forEach(btn => {
                 btn.onclick = () => {
+                    // Remove classe ativa de todos
                     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
                     document.querySelectorAll('.admin-tab-content').forEach(c => c.classList.remove('active'));
+                    // Adiciona ao clicado
                     btn.classList.add('active');
                     const targetId = `admin-tab-${btn.dataset.tab}`;
                     const target = document.getElementById(targetId);
@@ -55,16 +60,19 @@ const AdminPanel = {
             });
         }
         
+        // Botões de Ação do Aluno
         const btnDelete = document.getElementById('delete-athlete-btn');
         if(btnDelete) btnDelete.onclick = AdminPanel.deleteAthlete;
         
         const btnAnalyze = document.getElementById('analyze-athlete-btn-ia');
         if(btnAnalyze) btnAnalyze.onclick = AdminPanel.runIA;
 
+        // Carregamento Inicial de Dados
         AdminPanel.loadAthletes();
         AdminPanel.loadPending();
     },
 
+    // Carrega lista de usuários do Firebase
     loadAthletes: () => {
         if(!AdminPanel.state.db) return;
         AdminPanel.state.db.ref('users').orderByChild('name').on('value', snap => {
@@ -73,12 +81,14 @@ const AdminPanel = {
         });
     },
 
+    // Renderiza a lista lateral de atletas
     renderList: (filter = "") => {
         const div = AdminPanel.elements.list;
         if(!div) return;
         div.innerHTML = "";
         
         Object.entries(AdminPanel.state.athletes).forEach(([uid, data]) => {
+            // Filtra Admins e Busca
             if (!data || data.role === 'admin') return;
             const name = data.name || "Sem Nome";
             if (filter && !name.toLowerCase().includes(filter.toLowerCase())) return;
@@ -93,22 +103,23 @@ const AdminPanel = {
         });
     },
 
+    // Seleciona um atleta e carrega seus dados
     selectAthlete: (uid, name) => {
         AdminPanel.state.selectedAthleteId = uid;
         if(AdminPanel.elements.name) AdminPanel.elements.name.textContent = name;
         if(AdminPanel.elements.details) AdminPanel.elements.details.classList.remove('hidden');
-        AdminPanel.renderList(); 
+        AdminPanel.renderList(); // Atualiza visual da seleção
         AdminPanel.loadWorkouts(uid);
         AdminPanel.loadHistory(uid);
     },
 
-    // --- AQUI ESTÁ A BLINDAGEM (TRY/CATCH DENTRO DO LOOP) ---
+    // --- CARREGAMENTO DE TREINOS (COM BLINDAGEM E DETALHES COMPLETOS) ---
     loadWorkouts: (uid) => {
         const div = AdminPanel.elements.workouts;
         if(!div) return;
-        div.innerHTML = "<p>Carregando...</p>";
+        div.innerHTML = "<p>Carregando planilha...</p>";
         
-        // Busca os últimos 100 treinos
+        // Busca os últimos 100 treinos para garantir histórico
         AdminPanel.state.db.ref(`data/${uid}/workouts`).orderByChild('date').limitToLast(100).on('value', snap => {
             div.innerHTML = "";
             if(!snap.exists()) { div.innerHTML = "<p>Nenhum treino agendado.</p>"; return; }
@@ -123,10 +134,10 @@ const AdminPanel = {
                 return db - da;
             });
 
+            // LOOP BLINDADO: Se um item falhar, o próximo carrega
             list.forEach(w => {
-                // *** BLINDAGEM ***
-                // Se der erro neste treino, o catch pega e o loop continua para o próximo
                 try {
+                    // Dados Básicos com Fallback para não quebrar
                     const dateStr = w.date ? new Date(w.date).toLocaleDateString('pt-BR') : "--/--";
                     const title = w.title || "Sem Título";
                     const desc = w.description || "";
@@ -135,13 +146,14 @@ const AdminPanel = {
                     const card = document.createElement('div');
                     card.className = 'workout-card';
                     
-                    let border = "5px solid #ccc";
-                    if(status === 'realizado') border = "5px solid #28a745";
-                    else if(status === 'nao_realizado') border = "5px solid #dc3545";
-                    else if(status === 'realizado_parcial') border = "5px solid #ffc107";
+                    // Cores de Status
+                    let border = "5px solid #ccc"; // Planejado
+                    if(status === 'realizado') border = "5px solid #28a745"; // Verde
+                    else if(status === 'nao_realizado') border = "5px solid #dc3545"; // Vermelho
+                    else if(status === 'realizado_parcial') border = "5px solid #ffc107"; // Amarelo
                     card.style.borderLeft = border;
 
-                    // Monta HTML do Card
+                    // Monta HTML do Card Principal
                     let html = `
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
                             <strong style="font-size:1.1em; color:var(--primary-color);">${dateStr}</strong>
@@ -151,14 +163,14 @@ const AdminPanel = {
                         <div style="white-space:pre-wrap; font-size:0.95rem; color:#444; background:#f9f9f9; padding:8px; border-radius:4px; border:1px solid #eee;">${desc}</div>
                     `;
 
-                    // Dados do Strava
+                    // Dados do Strava (Se existirem) - MAPA E SPLITS
                     if(w.stravaData) {
-                        // Link do Mapa
+                        // Lógica do Link do Mapa
                         let link = "";
                         if(w.stravaData.mapLink) {
-                            link = `<a href="${w.stravaData.mapLink}" target="_blank" style="color:#fc4c02; font-weight:bold; text-decoration:none;">🗺️ Ver Mapa</a>`;
+                            link = `<a href="${w.stravaData.mapLink}" target="_blank" style="color:#fc4c02; font-weight:bold; text-decoration:none; margin-left:auto;">🗺️ Ver Mapa</a>`;
                         } else if(w.stravaActivityId) {
-                            link = `<a href="https://www.strava.com/activities/${w.stravaActivityId}" target="_blank" style="color:#fc4c02; font-weight:bold; text-decoration:none;">🗺️ Ver Mapa</a>`;
+                            link = `<a href="https://www.strava.com/activities/${w.stravaActivityId}" target="_blank" style="color:#fc4c02; font-weight:bold; text-decoration:none; margin-left:auto;">🗺️ Ver Mapa</a>`;
                         }
 
                         html += `
@@ -175,7 +187,7 @@ const AdminPanel = {
                             </div>
                         `;
                         
-                        // Parciais (Splits)
+                        // Tabela de Parciais (Splits) - ESSENCIAL
                         if(w.stravaData.splits && Array.isArray(w.stravaData.splits)) {
                             let rows = "";
                             w.stravaData.splits.forEach(s => {
@@ -193,6 +205,11 @@ const AdminPanel = {
                         }
                     }
 
+                    // Feedback do Atleta (Se houver)
+                    if(w.feedback) {
+                         html += `<div style="margin-top:8px; font-size:0.9rem; color:#333; font-style:italic; background:#e8f5e9; padding:5px; border-radius:4px;">💬 "${w.feedback}"</div>`;
+                    }
+
                     // Botão Excluir
                     html += `
                         <div style="text-align:right; margin-top:10px; padding-top:5px; border-top:1px dashed #ddd;">
@@ -202,7 +219,7 @@ const AdminPanel = {
 
                     card.innerHTML = html;
 
-                    // Listeners do Card
+                    // Listeners do Card (Abre Modal de Detalhes)
                     card.addEventListener('click', (e) => {
                         // Evita abrir modal se clicar em links, botões ou detalhes
                         if(!e.target.closest('button') && !e.target.closest('a') && !e.target.closest('details')) {
@@ -210,11 +227,12 @@ const AdminPanel = {
                         }
                     });
 
+                    // Listener do Botão Excluir
                     const delBtn = card.querySelector('.btn-del');
                     if(delBtn) {
                         delBtn.onclick = (ev) => {
                             ev.stopPropagation();
-                            if(confirm("Tem certeza?")) {
+                            if(confirm("Tem certeza que deseja apagar este treino?")) {
                                 const u={}; 
                                 u[`/data/${uid}/workouts/${w.key}`]=null; 
                                 u[`/publicWorkouts/${w.key}`]=null;
@@ -224,15 +242,16 @@ const AdminPanel = {
                     }
 
                     div.appendChild(card);
+
                 } catch (error) {
-                    console.error("Erro ao renderizar treino (Item Pulado):", w, error);
+                    console.error("Erro CRÍTICO ao renderizar treino:", w, error);
+                    // O catch garante que o loop continue para o próximo treino
                 }
-                // *** FIM DA BLINDAGEM ***
             });
         });
     },
 
-    // Form de Prescrição (V17)
+    // Salvar Treino (Formulário Detalhado V17)
     handleAddWorkout: (e) => {
         e.preventDefault();
         const uid = AdminPanel.state.selectedAthleteId;
@@ -274,6 +293,7 @@ const AdminPanel = {
         });
     },
 
+    // Carrega Histórico de IA
     loadHistory: (uid) => {
         const div = AdminPanel.elements.iaHistoryList;
         if(!div) return;
@@ -287,18 +307,19 @@ const AdminPanel = {
         });
     },
 
+    // Carrega Aprovações Pendentes
     loadPending: () => {
         const div = AdminPanel.elements.pendingList;
         if(!div) return;
         AdminPanel.state.db.ref('pendingApprovals').on('value', s => {
             div.innerHTML = "";
-            if(!s.exists()) { div.innerHTML = "Nada."; return; }
+            if(!s.exists()) { div.innerHTML = "Nenhuma pendência."; return; }
             s.forEach(c => {
+                const val = c.val() || {};
                 const row = document.createElement('div'); row.className = 'pending-item';
-                const v = c.val() || {};
-                row.innerHTML = `<span>${v.name||"Anon"}</span> <button class="btn btn-success btn-small">OK</button>`;
+                row.innerHTML = `<span>${val.name||"Anon"}</span> <button class="btn btn-success btn-small">OK</button>`;
                 row.querySelector('button').onclick = () => {
-                    const u={}; u[`/users/${c.key}`]={name:v.name,email:v.email,role:'atleta',createdAt:new Date().toISOString()}; u[`/data/${c.key}`]={workouts:{}}; u[`/pendingApprovals/${c.key}`]=null;
+                    const u={}; u[`/users/${c.key}`]={name:val.name,email:val.email,role:'atleta',createdAt:new Date().toISOString()}; u[`/data/${c.key}`]={workouts:{}}; u[`/pendingApprovals/${c.key}`]=null;
                     AdminPanel.state.db.ref().update(u);
                 };
                 div.appendChild(row);
@@ -306,15 +327,17 @@ const AdminPanel = {
         });
     },
     
+    // Deleta Atleta
     deleteAthlete: () => {
         const uid = AdminPanel.state.selectedAthleteId;
-        if(uid && confirm("Apagar tudo deste atleta?")) {
+        if(uid && confirm("Apagar atleta e dados?")) {
             const u={}; u[`/users/${uid}`]=null; u[`/data/${uid}`]=null;
             AdminPanel.state.db.ref().update(u);
             AdminPanel.elements.details.classList.add('hidden');
         }
     },
 
+    // Executa IA
     runIA: async () => {
         const uid = AdminPanel.state.selectedAthleteId;
         const output = document.getElementById('ia-analysis-output');
@@ -331,11 +354,11 @@ const AdminPanel = {
 };
 
 // ===================================================================
-// 2. ATLETA PANEL (BLINDADO)
+// 2. ATLETA PANEL (VISÃO DO ALUNO COMPLETA)
 // ===================================================================
 const AtletaPanel = {
     init: (user, db) => {
-        console.log("AtletaPanel V4.0: Init");
+        console.log("AtletaPanel V6.0: Init");
         const list = document.getElementById('atleta-workouts-list');
         const welcome = document.getElementById('atleta-welcome-name');
         if(welcome) welcome.textContent = AppPrincipal.state.userData ? AppPrincipal.state.userData.name : "Atleta";
@@ -361,7 +384,9 @@ const AtletaPanel = {
                     
                     let extra = "";
                     if(w.stravaData) {
-                        let link = w.stravaData.mapLink ? `<a href="${w.stravaData.mapLink}" target="_blank" style="color:#fc4c02; font-weight:bold; text-decoration:none;">Map</a>` : "";
+                        let link = w.stravaData.mapLink ? `<a href="${w.stravaData.mapLink}" target="_blank" style="color:#fc4c02; font-weight:bold; text-decoration:none;">🗺️ Ver Mapa</a>` : "";
+                        if(!link && w.stravaActivityId) link = `<a href="https://www.strava.com/activities/${w.stravaActivityId}" target="_blank" style="color:#fc4c02; font-weight:bold; text-decoration:none;">🗺️ Ver Mapa</a>`;
+                        
                         extra = `<div style="color:#e65100; font-size:0.8rem; margin-top:5px;"><b>Strava:</b> ${w.stravaData.distancia} | ${w.stravaData.ritmo} ${link}</div>`;
                     }
 
@@ -390,7 +415,7 @@ const AtletaPanel = {
 };
 
 // ===================================================================
-// 3. FEED PANEL (BLINDADO)
+// 3. FEED PANEL (SOCIAL)
 // ===================================================================
 const FeedPanel = {
     init: (user, db) => {
@@ -409,15 +434,15 @@ const FeedPanel = {
                     const card = document.createElement('div');
                     card.className = 'workout-card';
                     let icon = w.stravaData ? "<i class='bx bxl-strava' style='color:#fc4c02'></i>" : "";
+                    let mapL = w.stravaData && w.stravaData.mapLink ? `<a href="${w.stravaData.mapLink}" target="_blank" style="font-size:0.7rem; color:#fc4c02;">[Mapa]</a>` : "";
                     
-                    // Link Mapa Feed
-                    let linkM = "";
-                    if(w.stravaData && w.stravaData.mapLink) linkM = `<a href="${w.stravaData.mapLink}" target="_blank" style="color:#fc4c02; margin-left:5px; font-size:0.7rem;">[Mapa]</a>`;
+                    const owner = w.ownerName || "Atleta";
+                    const date = w.date ? new Date(w.date).toLocaleDateString() : "--";
 
                     card.innerHTML = `
                         <div style="display:flex; gap:10px; align-items:center; margin-bottom:5px;">
-                            <div style="width:30px; height:30px; background:#ccc; border-radius:50%; display:flex; justify-content:center; align-items:center;">${w.ownerName?w.ownerName[0]:"?"}</div>
-                            <div><b>${w.ownerName || "Atleta"}</b> <small style="color:#777;">${new Date(w.date).toLocaleDateString()} ${icon} ${linkM}</small></div>
+                            <div style="width:30px; height:30px; background:#ccc; border-radius:50%; display:flex; justify-content:center; align-items:center;">${owner.charAt(0)}</div>
+                            <div><b>${owner}</b> <small style="color:#777;">${date} ${icon} ${mapL}</small></div>
                         </div>
                         <div><b>${w.title || "Treino"}</b></div>
                         <div style="font-size:0.9rem; margin-top:5px;">${w.feedback||w.description||""}</div>`;
@@ -432,201 +457,5 @@ const FeedPanel = {
     }
 };
 
-// ===================================================================
-// 4. FINANCEIRO (COMPLETO E SEGURO)
-// ===================================================================
-const FinancePanel = {
-    state: { items: [] },
-    init: (user, db) => {
-        FinancePanel.state.db = db;
-        FinancePanel.state.user = user;
-        FinancePanel.switchTab('receber');
-        
-        // Listener de Saldo
-        db.ref(`finance`).on('value', s => {
-            let rec=0, exp=0;
-            if(s.exists()) {
-                const d = s.val();
-                if(d.receivables) Object.values(d.receivables).forEach(r => rec += parseFloat(r.amount));
-                if(d.expenses) Object.values(d.expenses).forEach(e => exp += parseFloat(e.amount));
-            }
-            const elRec = document.getElementById('fin-total-recebido');
-            const elExp = document.getElementById('fin-total-pago');
-            const elSal = document.getElementById('fin-saldo');
-            if(elRec) elRec.textContent = `R$ ${rec.toFixed(2)}`;
-            if(elExp) elExp.textContent = `R$ ${exp.toFixed(2)}`;
-            if(elSal) elSal.textContent = `R$ ${(rec-exp).toFixed(2)}`;
-        });
-    },
-
-    switchTab: (tab) => {
-        const div = document.getElementById('fin-content-area');
-        if(!div) return;
-        div.innerHTML = ""; // Clear
-        
-        // Botão Novo
-        const controls = document.createElement('div');
-        controls.style.marginBottom = "15px";
-        const btn = document.createElement('button');
-        btn.className = "btn btn-primary";
-        btn.textContent = tab === 'receber' ? "+ Nova Receita" : (tab === 'pagar' ? "+ Nova Despesa" : "+ Novo Produto");
-        btn.onclick = () => FinancePanel.openModal(tab);
-        controls.appendChild(btn);
-        div.appendChild(controls);
-        
-        const listDiv = document.createElement('div');
-        listDiv.id = "fin-list";
-        div.appendChild(listDiv);
-        
-        const refPath = tab === 'estoque' ? 'stock' : `finance/${tab === 'receber' ? 'receivables' : 'expenses'}`;
-        const ref = FinancePanel.state.db.ref(refPath);
-        
-        ref.on('value', s => {
-            listDiv.innerHTML = "";
-            if(!s.exists()) { listDiv.innerHTML = "<p style='color:#777;'>Nenhum registro.</p>"; return; }
-            
-            s.forEach(c => {
-                const i = c.val();
-                const itemDiv = document.createElement('div');
-                itemDiv.style.background = "white";
-                itemDiv.style.padding = "12px";
-                itemDiv.style.border = "1px solid #eee";
-                itemDiv.style.marginBottom = "8px";
-                itemDiv.style.borderRadius = "6px";
-                itemDiv.style.display = "flex";
-                itemDiv.style.justifyContent = "space-between";
-                itemDiv.style.alignItems = "center";
-                
-                const val = parseFloat(i.amount || i.price || 0).toFixed(2);
-                // Data ou Quantidade
-                let detail = "";
-                if(i.date) detail = new Date(i.date).toLocaleDateString();
-                else if(i.quantity !== undefined) detail = `${i.quantity} un`;
-                
-                // Cor do valor
-                let color = "#333";
-                if(tab === 'receber') color = "var(--success-color)";
-                if(tab === 'pagar') color = "var(--danger-color)";
-
-                itemDiv.innerHTML = `
-                    <div>
-                        <div style="font-weight:bold;">${i.description || i.name}</div>
-                        <div style="font-size:0.8rem; color:#777;">${detail}</div>
-                    </div>
-                    <div style="text-align:right;">
-                        <div style="font-weight:bold; color:${color};">R$ ${val}</div>
-                        <button class="btn-del-fin" style="color:red; border:none; background:none; cursor:pointer; font-size:1.2rem; margin-top:5px;">&times;</button>
-                    </div>
-                `;
-                
-                itemDiv.querySelector('.btn-del-fin').onclick = () => FinancePanel.deleteItem(refPath, c.key);
-                listDiv.appendChild(itemDiv);
-            });
-        });
-    },
-
-    deleteItem: (path, key) => {
-        if(confirm("Excluir este item?")) {
-            FinancePanel.state.db.ref(`${path}/${key}`).remove();
-        }
-    },
-
-    openModal: (type) => {
-        const modal = document.getElementById('finance-modal');
-        if(!modal) return;
-        modal.classList.remove('hidden');
-        
-        const typeInput = document.getElementById('fin-type');
-        if(typeInput) typeInput.value = type;
-        
-        const title = document.getElementById('finance-modal-title');
-        if(title) title.textContent = type === 'receber' ? "Nova Receita" : (type === 'pagar' ? "Nova Despesa" : "Novo Produto");
-        
-        const stockArea = document.getElementById('fin-stock-area');
-        const athleteGroup = document.getElementById('fin-athlete-group');
-        
-        // Reset display
-        if(stockArea) stockArea.classList.add('hidden');
-        if(athleteGroup) athleteGroup.classList.add('hidden');
-        
-        if(type === 'estoque') {
-            // Só campos básicos (Nome, Preço)
-        } else if (type === 'receber') {
-            if(stockArea) stockArea.classList.remove('hidden');
-            if(athleteGroup) athleteGroup.classList.remove('hidden');
-            
-            // Popula Produtos
-            const sel = document.getElementById('fin-product-select');
-            if(sel) {
-                sel.innerHTML = "<option value=''>Apenas Mensalidade (Sem baixa)</option>";
-                FinancePanel.state.db.ref('stock').once('value', s => {
-                    s.forEach(c => {
-                         const opt = document.createElement('option');
-                         opt.value = c.key;
-                         opt.text = `${c.val().name} (Estoque: ${c.val().quantity})`;
-                         sel.appendChild(opt);
-                    });
-                });
-            }
-            
-            // Popula Alunos
-            const athSel = document.getElementById('fin-athlete-select');
-            if(athSel) {
-                athSel.innerHTML = "<option value=''>Avulso</option>";
-                FinancePanel.state.db.ref('users').once('value', s => {
-                    s.forEach(c => { 
-                        if(c.val().role !== 'admin') {
-                            const opt = document.createElement('option');
-                            opt.value = c.key;
-                            opt.text = c.val().name;
-                            athSel.appendChild(opt);
-                        }
-                    });
-                });
-            }
-        }
-        // 'pagar' usa apenas os campos padrão
-    },
-
-    handleSaveTransaction: (e) => {
-        e.preventDefault();
-        const type = document.getElementById('fin-type').value;
-        const desc = document.getElementById('fin-desc').value;
-        const val = parseFloat(document.getElementById('fin-value').value);
-        const date = document.getElementById('fin-date').value;
-        
-        if(type === 'estoque') {
-            // Novo Produto
-            FinancePanel.state.db.ref('stock').push({ name: desc, price: val, quantity: 0 }); 
-        } else {
-            const prodId = document.getElementById('fin-product-select').value;
-            const qty = parseFloat(document.getElementById('fin-qty').value || 0);
-            
-            // Se for receita com produto, baixa estoque
-            if(type === 'receber' && prodId) {
-                const stockRef = FinancePanel.state.db.ref(`stock/${prodId}/quantity`);
-                stockRef.transaction(current => (current || 0) - qty);
-            }
-            
-            // Salva Transação
-            const path = type === 'receber' ? 'receivables' : 'expenses';
-            FinancePanel.state.db.ref(`finance/${path}`).push({
-                description: desc, 
-                amount: val, 
-                date: date, 
-                athleteId: document.getElementById('fin-athlete-select').value || null
-            });
-        }
-        document.getElementById('finance-modal').classList.add('hidden');
-        // Limpa form
-        e.target.reset();
-    }
-};
-
-// EXPORT GLOBAL
-window.panels = { 
-    init: () => {}, 
-    cleanup: () => { 
-        if(AdminPanel.state.db) AdminPanel.state.db.ref().off(); 
-    } 
-};
+// Exportação Global Obrigatória
+window.panels = { init: () => {}, cleanup: () => { if(AdminPanel.state.db) AdminPanel.state.db.ref().off(); } };
