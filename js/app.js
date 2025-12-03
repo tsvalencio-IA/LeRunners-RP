@@ -1,5 +1,5 @@
 /* =================================================================== */
-/* APP.JS - VERSÃO V3.0 - DEFINITIVA (COM FINANCEIRO)
+/* APP.JS V5.0 - CONTROLE CENTRAL (COM STRAVA LOOP COMPLETO)
 /* =================================================================== */
 
 const AppPrincipal = {
@@ -18,8 +18,11 @@ const AppPrincipal = {
         AppPrincipal.state.auth = firebase.auth();
         AppPrincipal.state.db = firebase.database();
 
-        if (document.getElementById('login-form')) AuthLogic.init(AppPrincipal.state.auth, AppPrincipal.state.db);
-        else if (document.getElementById('app-container')) AppPrincipal.initPlatform();
+        if (document.getElementById('login-form')) {
+            AuthLogic.init(AppPrincipal.state.auth, AppPrincipal.state.db);
+        } else if (document.getElementById('app-container')) {
+            AppPrincipal.initPlatform();
+        }
     },
 
     initPlatform: () => {
@@ -28,34 +31,24 @@ const AppPrincipal = {
         el.appContainer = document.getElementById('app-container');
         el.mainContent = document.getElementById('app-main-content');
 
-        // Navegação
         document.getElementById('logoutButton').onclick = AppPrincipal.handleLogout;
         document.getElementById('nav-planilha-btn').onclick = () => AppPrincipal.navigateTo('planilha');
         document.getElementById('nav-feed-btn').onclick = () => AppPrincipal.navigateTo('feed');
         
-        // NOVO: Botão Financeiro (Injetado para Admins)
-        const finBtn = document.getElementById('nav-finance-btn');
-        if(finBtn) finBtn.onclick = () => AppPrincipal.navigateTo('finance');
+        // Botão Financeiro (Admin Only)
+        const btnFinance = document.getElementById('nav-finance-btn');
+        if(btnFinance) btnFinance.onclick = () => AppPrincipal.navigateTo('finance');
 
         document.getElementById('nav-profile-btn').onclick = AppPrincipal.openProfileModal;
         
-        // Modais Genéricos
         document.querySelectorAll('.close-btn').forEach(b => b.onclick = (e) => e.target.closest('.modal-overlay').classList.add('hidden'));
         
         // Forms
         if(document.getElementById('feedback-form')) document.getElementById('feedback-form').onsubmit = AppPrincipal.handleFeedbackSubmit;
-        if(document.getElementById('comment-form')) document.getElementById('comment-form').onsubmit = AppPrincipal.handleCommentSubmit;
-        if(document.getElementById('profile-form')) document.getElementById('profile-form').onsubmit = AppPrincipal.handleProfileSubmit;
-        if(document.getElementById('log-activity-form')) document.getElementById('log-activity-form').onsubmit = AppPrincipal.handleLogActivitySubmit;
-        
-        // Financeiro Form (Novo)
         if(document.getElementById('finance-form')) document.getElementById('finance-form').onsubmit = FinancePanel.handleSaveTransaction;
-
+        
         const photoInput = document.getElementById('photo-upload-input');
         if(photoInput) photoInput.onchange = AppPrincipal.handlePhotoUpload;
-        
-        const btnSaveIa = document.getElementById('save-ia-analysis-btn');
-        if(btnSaveIa) btnSaveIa.onclick = AppPrincipal.handleSaveIaAnalysis;
 
         const urlParams = new URLSearchParams(window.location.search);
         
@@ -69,7 +62,6 @@ const AppPrincipal = {
 
     loadUserData: (uid) => {
         AppPrincipal.state.db.ref('users').on('value', s => AppPrincipal.state.userCache = s.val() || {});
-        
         AppPrincipal.state.db.ref('users/' + uid).once('value', s => {
             let data = s.val();
             AppPrincipal.state.db.ref('admins/' + uid).once('value', adminSnap => {
@@ -82,47 +74,45 @@ const AppPrincipal = {
                     
                     if (isAdmin) {
                         AppPrincipal.state.userData.role = 'admin'; 
-                        
-                        // Exibe botão Financeiro
-                        const finBtn = document.getElementById('nav-finance-btn');
-                        if(finBtn) finBtn.classList.remove('hidden');
+                        const btnFin = document.getElementById('nav-finance-btn');
+                        if(btnFin) btnFin.classList.remove('hidden');
 
-                        // Botão Modo Atleta
+                        // Toggle Modo Atleta
                         const nav = document.querySelector('.app-header nav');
                         if(!document.getElementById('admin-toggle')) {
                             const btn = document.createElement('button');
-                            btn.id = 'admin-toggle'; btn.className = 'btn btn-nav'; btn.innerHTML = "Modo Atleta"; 
-                            btn.style.border = "1px solid white"; btn.style.marginLeft="10px";
+                            btn.id = 'admin-toggle'; btn.className = 'btn btn-nav'; btn.innerHTML = "Modo Atleta"; btn.style.border="1px solid white"; btn.style.marginLeft="10px";
                             btn.onclick = () => {
-                                AppPrincipal.state.viewMode = AppPrincipal.state.viewMode === 'admin' ? 'atleta' : 'admin';
-                                btn.innerHTML = AppPrincipal.state.viewMode === 'admin' ? "Modo Atleta" : "Modo Coach";
-                                AppPrincipal.updateClasses(); AppPrincipal.navigateTo('planilha');
+                                if (AppPrincipal.state.viewMode === 'admin') {
+                                    AppPrincipal.state.viewMode = 'atleta'; btn.innerHTML = "Modo Coach";
+                                    AppPrincipal.updateClasses(false);
+                                } else {
+                                    AppPrincipal.state.viewMode = 'admin'; btn.innerHTML = "Modo Atleta";
+                                    AppPrincipal.updateClasses(true);
+                                }
+                                AppPrincipal.navigateTo('planilha');
                             };
                             nav.insertBefore(btn, document.getElementById('logoutButton'));
                         }
                     }
                     AppPrincipal.state.db.ref(`users/${uid}/stravaAuth`).on('value', ts => AppPrincipal.state.stravaTokenData = ts.val());
-                    AppPrincipal.updateClasses();
+                    AppPrincipal.updateClasses(isAdmin);
                     AppPrincipal.navigateTo('planilha');
                 }
             });
         });
     },
 
-    updateClasses: () => {
+    updateClasses: (isAdmin) => {
         const c = document.getElementById('app-container');
-        if(AppPrincipal.state.viewMode==='admin') { c.classList.add('admin-view'); c.classList.remove('atleta-view'); }
+        if(AppPrincipal.state.viewMode==='admin' && isAdmin) { c.classList.add('admin-view'); c.classList.remove('atleta-view'); }
         else { c.classList.add('atleta-view'); c.classList.remove('admin-view'); }
     },
 
-    // --- ROTEAMENTO (AGORA COM FINANCEIRO) ---
     navigateTo: (page) => {
         const { mainContent, loader, appContainer } = AppPrincipal.elements;
-        document.querySelectorAll('.btn-nav').forEach(b => b.classList.remove('active'));
-        const btn = document.getElementById(`nav-${page}-btn`); if(btn) btn.classList.add('active');
-
-        if(window.panels && window.panels.cleanup) window.panels.cleanup();
         mainContent.innerHTML = "";
+        if(window.panels && window.panels.cleanup) window.panels.cleanup();
         
         let templateId = "";
         if (page === 'planilha') {
@@ -135,18 +125,12 @@ const AppPrincipal = {
 
         const template = document.getElementById(templateId);
         if (template) {
-            const clone = template.content.cloneNode(true);
-            mainContent.appendChild(clone);
-            
-            // Init Module
+            mainContent.appendChild(template.content.cloneNode(true));
             if (page === 'planilha') {
                 if (AppPrincipal.state.userData.role === 'admin' && AppPrincipal.state.viewMode === 'admin') AdminPanel.init(AppPrincipal.state.currentUser, AppPrincipal.state.db);
                 else AtletaPanel.init(AppPrincipal.state.currentUser, AppPrincipal.state.db);
-            } else if (page === 'feed') {
-                FeedPanel.init(AppPrincipal.state.currentUser, AppPrincipal.state.db);
-            } else if (page === 'finance') {
-                FinancePanel.init(AppPrincipal.state.currentUser, AppPrincipal.state.db);
-            }
+            } else if (page === 'feed') FeedPanel.init(AppPrincipal.state.currentUser, AppPrincipal.state.db);
+            else if (page === 'finance') FinancePanel.init(AppPrincipal.state.currentUser, AppPrincipal.state.db);
         }
         loader.classList.add('hidden');
         appContainer.classList.remove('hidden');
@@ -154,7 +138,7 @@ const AppPrincipal = {
 
     handleLogout: () => AppPrincipal.state.auth.signOut().then(() => window.location.href = 'index.html'),
 
-    // STRAVA SYNC
+    // STRAVA DEEP SYNC (LOOP)
     handleStravaConnect: () => { window.location.href = `https://www.strava.com/oauth/authorize?client_id=${window.STRAVA_PUBLIC_CONFIG.clientID}&response_type=code&redirect_uri=${window.STRAVA_PUBLIC_CONFIG.redirectURI}&approval_prompt=force&scope=read_all,activity:read_all,profile:read_all`; },
     
     exchangeStravaCode: async (code) => {
@@ -190,18 +174,19 @@ const AppPrincipal = {
                 if (activities.length === 0) { keepFetching = false; break; }
 
                 for(const act of activities) {
+                    if(!act.start_date) continue;
                     let matchKey = null;
                     const actDate = act.start_date.split('T')[0];
                     let alreadyExists = false;
 
                     for (const [key, val] of Object.entries(existingWorkouts)) {
-                        if (String(val.stravaActivityId) === String(act.id)) alreadyExists = true;
-                        if (val.date === actDate && val.status !== 'realizado') matchKey = key;
+                        if (val && String(val.stravaActivityId) === String(act.id)) alreadyExists = true;
+                        if (val && val.date === actDate && val.status !== 'realizado') matchKey = key;
                     }
 
                     if(alreadyExists && !matchKey) continue;
 
-                    await new Promise(r => setTimeout(r, 150)); 
+                    await new Promise(r => setTimeout(r, 200)); 
                     const detailRes = await fetch(`https://www.strava.com/api/v3/activities/${act.id}`, { headers: { 'Authorization': `Bearer ${stravaTokenData.accessToken}` } });
                     const detail = await detailRes.json();
                     
@@ -210,7 +195,7 @@ const AppPrincipal = {
                         splits = detail.splits_metric.map((s, i) => {
                             const pMin = Math.floor((s.moving_time/60)/(s.distance/1000)); 
                             const pSec = Math.round(((s.moving_time/60)/(s.distance/1000)-pMin)*60);
-                            const pStr = (isFinite(pMin) && isFinite(pSec)) ? `${pMin}'${pSec.toString().padStart(2,'0')}"` : "-";
+                            const pStr = `${pMin}'${pSec.toString().padStart(2,'0')}"`;
                             return { km: i+1, pace: pStr, time: new Date(s.moving_time*1000).toISOString().substr(14,5), elev: (s.elevation_difference||0).toFixed(0) };
                         });
                     }
@@ -218,7 +203,7 @@ const AppPrincipal = {
                     const distKm = (act.distance/1000).toFixed(2)+" km";
                     const paceMin = Math.floor((act.moving_time/60)/(act.distance/1000));
                     const paceSec = Math.round(((act.moving_time/60)/(act.distance/1000)-paceMin)*60);
-                    const pTotal = (isFinite(paceMin) && isFinite(paceSec)) ? `${paceMin}:${paceSec.toString().padStart(2,'0')}` : "-";
+                    const pTotal = `${paceMin}:${paceSec.toString().padStart(2,'0')}`;
                     
                     const stravaPayload = { 
                         distancia: distKm, tempo: new Date(act.moving_time*1000).toISOString().substr(11,8), 
@@ -226,20 +211,23 @@ const AppPrincipal = {
                         mapLink: detail.map?.summary_polyline ? `https://www.strava.com/activities/${act.id}` : null
                     };
 
+                    const commonData = {
+                        status: 'realizado',
+                        realizadoAt: new Date().toISOString(),
+                        stravaData: stravaPayload,
+                        stravaActivityId: act.id,
+                        feedback: `Sincronizado. ${distKm} em ${stravaPayload.tempo}.`
+                    };
+
                     if (matchKey) {
-                        updates[`/data/${currentUser.uid}/workouts/${matchKey}/status`] = 'realizado';
-                        updates[`/data/${currentUser.uid}/workouts/${matchKey}/realizadoAt`] = new Date().toISOString();
-                        updates[`/data/${currentUser.uid}/workouts/${matchKey}/stravaData`] = stravaPayload;
-                        updates[`/data/${currentUser.uid}/workouts/${matchKey}/stravaActivityId`] = act.id;
-                        updates[`/data/${currentUser.uid}/workouts/${matchKey}/feedback`] = `Sincronizado. ${distKm} em ${stravaPayload.tempo}.`;
-                        updates[`/publicWorkouts/${matchKey}`] = { ownerId: currentUser.uid, ownerName: AppPrincipal.state.userData.name, ...existingWorkouts[matchKey], status: 'realizado', stravaData: stravaPayload };
+                        updates[`/data/${currentUser.uid}/workouts/${matchKey}`] = { ...existingWorkouts[matchKey], ...commonData };
+                        updates[`/publicWorkouts/${matchKey}`] = { ownerId: currentUser.uid, ownerName: AppPrincipal.state.userData.name, ...existingWorkouts[matchKey], ...commonData };
                         totalImported++;
-                    } else if (!alreadyExists) {
+                    } else {
                         const newKey = AppPrincipal.state.db.ref().push().key;
                         const wData = {
-                            title: act.name, date: actDate, description: `[Importado]: ${act.type}`, status: 'realizado',
-                            stravaActivityId: act.id, stravaData: stravaPayload, createdBy: currentUser.uid,
-                            realizadoAt: new Date().toISOString(), feedback: "Sincronizado."
+                            title: act.name, date: actDate, description: `[Importado]: ${act.type}`, 
+                            createdBy: currentUser.uid, ...commonData
                         };
                         updates[`/data/${currentUser.uid}/workouts/${newKey}`] = wData;
                         updates[`/publicWorkouts/${newKey}`] = { ownerId: currentUser.uid, ownerName: AppPrincipal.state.userData.name, ...wData };
@@ -251,7 +239,7 @@ const AppPrincipal = {
 
             if(Object.keys(updates).length > 0) {
                 await AppPrincipal.state.db.ref().update(updates);
-                alert(`Sync Completo! ${totalImported} novos.`);
+                alert(`Sync Completo! ${totalImported} atividades.`);
             } else {
                 alert("Tudo atualizado.");
             }
@@ -261,10 +249,9 @@ const AppPrincipal = {
         finally { if(btn) { btn.disabled=false; btn.textContent="Sincronizar Strava"; } if(statusMsg) statusMsg.textContent=""; }
     },
 
-    // MODALS
+    // MODAIS (FEEDBACK)
     openFeedbackModal: (workoutId, ownerId, title) => {
         const modal = document.getElementById('feedback-modal');
-        if(!modal) return;
         AppPrincipal.state.modal = { isOpen: true, currentWorkoutId: workoutId, currentOwnerId: ownerId };
         document.getElementById('feedback-modal-title').textContent = title;
         document.getElementById('comments-list').innerHTML = "Carregando...";
@@ -277,7 +264,7 @@ const AppPrincipal = {
                 if(document.getElementById('workout-feedback-text')) document.getElementById('workout-feedback-text').value = d.feedback || '';
                 
                 if(d.stravaData) {
-                    const sd = document.getElementById('modal-strava-content');
+                    const content = document.getElementById('modal-strava-content');
                     document.getElementById('modal-strava-data').classList.remove('hidden');
                     let html = `<div style="text-align:center; margin-bottom:10px;"><b>${d.stravaData.distancia}</b> | ${d.stravaData.ritmo} | ${d.stravaData.tempo}</div>`;
                     if(d.stravaData.splits) {
@@ -285,25 +272,27 @@ const AppPrincipal = {
                         d.stravaData.splits.forEach(sp => html += `<tr><td>${sp.km}</td><td>${sp.pace}</td><td>${sp.elev}m</td></tr>`);
                         html += `</tbody></table>`;
                     }
-                    sd.innerHTML = html;
+                    if(content) content.innerHTML = html;
                 }
             }
         });
         
         AppPrincipal.state.db.ref(`workoutComments/${workoutId}`).on('value', s => {
             const list = document.getElementById('comments-list');
-            list.innerHTML = "";
-            if(!s.exists()) return;
-            s.forEach(c => list.innerHTML += `<div style="border-bottom:1px solid #eee; padding:5px;"><b>${c.val().name}:</b> ${c.val().text}</div>`);
+            if(list) {
+                list.innerHTML = "";
+                if(!s.exists()) return;
+                s.forEach(c => list.innerHTML += `<div style="border-bottom:1px solid #eee; padding:5px;"><b>${c.val().name}:</b> ${c.val().text}</div>`);
+            }
         });
         modal.classList.remove('hidden');
     },
-
+    
     handleFeedbackSubmit: async (e) => {
         e.preventDefault();
         const { currentWorkoutId, currentOwnerId } = AppPrincipal.state.modal;
         const btn = document.getElementById('save-feedback-btn');
-        if(btn) { btn.disabled=true; btn.textContent="Enviando..."; }
+        if(btn) { btn.disabled=true; btn.textContent="Salvando..."; }
 
         try {
             let imageUrl = null;
@@ -313,7 +302,10 @@ const AppPrincipal = {
                 imageUrl = await AppPrincipal.uploadFileToCloudinary(fileInput.files[0], 'workouts');
             }
 
-            const updates = { status: document.getElementById('workout-status').value, feedback: document.getElementById('workout-feedback-text').value };
+            const updates = { 
+                status: document.getElementById('workout-status').value, 
+                feedback: document.getElementById('workout-feedback-text').value
+            };
             if(imageUrl) updates.imageUrl = imageUrl;
 
             await AppPrincipal.state.db.ref(`data/${currentOwnerId}/workouts/${currentWorkoutId}`).update(updates);
@@ -332,15 +324,6 @@ const AppPrincipal = {
         if(!text) return;
         AppPrincipal.state.db.ref(`workoutComments/${AppPrincipal.state.modal.currentWorkoutId}`).push({ uid: AppPrincipal.state.currentUser.uid, name: AppPrincipal.state.userData.name, text: text, timestamp: firebase.database.ServerValue.TIMESTAMP });
         document.getElementById('comment-input').value = "";
-    },
-    
-    handleLogActivitySubmit: async (e) => { 
-        e.preventDefault();
-        const currentUser = AppPrincipal.state.currentUser;
-        const data = { date: document.getElementById('log-activity-date').value, title: document.getElementById('log-activity-title').value, description: document.getElementById('log-activity-feedback').value, status: 'realizado', createdBy: currentUser.uid, createdAt: new Date().toISOString() };
-        const ref = await AppPrincipal.state.db.ref(`data/${currentUser.uid}/workouts`).push(data);
-        await AppPrincipal.state.db.ref(`publicWorkouts/${ref.key}`).set({ ownerId: currentUser.uid, ownerName: AppPrincipal.state.userData.name, ...data });
-        document.getElementById('log-activity-modal').classList.add('hidden');
     },
 
     handlePhotoUpload: async (e) => {
