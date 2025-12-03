@@ -1,5 +1,5 @@
 /* =================================================================== */
-/* APP.JS V7.0 - CONTROLE CENTRAL (COM FINANCEIRO E STRAVA LOOP)
+/* APP.JS V8.0 - CONTROLE CENTRAL (INTEGRADO)
 /* =================================================================== */
 
 const AppPrincipal = {
@@ -35,7 +35,6 @@ const AppPrincipal = {
         document.getElementById('nav-planilha-btn').onclick = () => AppPrincipal.navigateTo('planilha');
         document.getElementById('nav-feed-btn').onclick = () => AppPrincipal.navigateTo('feed');
         
-        // Botão Financeiro (V3.0)
         const finBtn = document.getElementById('nav-finance-btn');
         if(finBtn) finBtn.onclick = () => AppPrincipal.navigateTo('finance');
 
@@ -47,8 +46,6 @@ const AppPrincipal = {
         if(document.getElementById('comment-form')) document.getElementById('comment-form').onsubmit = AppPrincipal.handleCommentSubmit;
         if(document.getElementById('profile-form')) document.getElementById('profile-form').onsubmit = AppPrincipal.handleProfileSubmit;
         if(document.getElementById('log-activity-form')) document.getElementById('log-activity-form').onsubmit = AppPrincipal.handleLogActivitySubmit;
-        
-        // Financeiro Form
         if(document.getElementById('finance-form')) document.getElementById('finance-form').onsubmit = FinancePanel.handleSaveTransaction;
 
         const photoInput = document.getElementById('photo-upload-input');
@@ -69,7 +66,6 @@ const AppPrincipal = {
 
     loadUserData: (uid) => {
         AppPrincipal.state.db.ref('users').on('value', s => AppPrincipal.state.userCache = s.val() || {});
-        
         AppPrincipal.state.db.ref('users/' + uid).once('value', s => {
             let data = s.val();
             AppPrincipal.state.db.ref('admins/' + uid).once('value', adminSnap => {
@@ -82,7 +78,6 @@ const AppPrincipal = {
                     
                     if (isAdmin) {
                         AppPrincipal.state.userData.role = 'admin'; 
-                        
                         const finBtn = document.getElementById('nav-finance-btn');
                         if(finBtn) finBtn.classList.remove('hidden');
 
@@ -92,13 +87,12 @@ const AppPrincipal = {
                             btn.id = 'admin-toggle'; btn.className = 'btn btn-nav'; btn.innerHTML = "Modo Atleta"; 
                             btn.style.border = "1px solid white"; btn.style.marginLeft="10px";
                             btn.onclick = () => {
-                                const appC = document.getElementById('app-container');
                                 if (AppPrincipal.state.viewMode === 'admin') {
                                     AppPrincipal.state.viewMode = 'atleta'; btn.innerHTML = "Modo Coach";
-                                    appC.classList.add('atleta-view'); appC.classList.remove('admin-view');
+                                    AppPrincipal.updateClasses(false);
                                 } else {
                                     AppPrincipal.state.viewMode = 'admin'; btn.innerHTML = "Modo Atleta";
-                                    appC.classList.add('admin-view'); appC.classList.remove('atleta-view');
+                                    AppPrincipal.updateClasses(true);
                                 }
                                 AppPrincipal.navigateTo('planilha');
                             };
@@ -106,21 +100,23 @@ const AppPrincipal = {
                         }
                     }
                     AppPrincipal.state.db.ref(`users/${uid}/stravaAuth`).on('value', ts => AppPrincipal.state.stravaTokenData = ts.val());
-                    
-                    const c = document.getElementById('app-container');
-                    if(isAdmin) c.classList.add('admin-view'); else c.classList.add('atleta-view');
-                    
+                    AppPrincipal.updateClasses(isAdmin);
                     AppPrincipal.navigateTo('planilha');
                 }
             });
         });
     },
 
+    updateClasses: (isAdmin) => {
+        const c = document.getElementById('app-container');
+        if(AppPrincipal.state.viewMode==='admin' && isAdmin) { c.classList.add('admin-view'); c.classList.remove('atleta-view'); }
+        else { c.classList.add('atleta-view'); c.classList.remove('admin-view'); }
+    },
+
     navigateTo: (page) => {
         const { mainContent, loader, appContainer } = AppPrincipal.elements;
         document.querySelectorAll('.btn-nav').forEach(b => b.classList.remove('active'));
-        const btn = document.getElementById(`nav-${page}-btn`); 
-        if(btn) btn.classList.add('active');
+        const btn = document.getElementById(`nav-${page}-btn`); if(btn) btn.classList.add('active');
 
         if(window.panels && window.panels.cleanup) window.panels.cleanup();
         mainContent.innerHTML = "";
@@ -141,14 +137,13 @@ const AppPrincipal = {
         const template = document.getElementById(templateId);
         if (template) {
             mainContent.appendChild(template.content.cloneNode(true));
-            
             if (page === 'planilha') {
                 if (AppPrincipal.state.userData.role === 'admin' && AppPrincipal.state.viewMode === 'admin') AdminPanel.init(AppPrincipal.state.currentUser, AppPrincipal.state.db);
                 else AtletaPanel.init(AppPrincipal.state.currentUser, AppPrincipal.state.db);
             } else if (page === 'feed') {
                 FeedPanel.init(AppPrincipal.state.currentUser, AppPrincipal.state.db);
             } else if (page === 'finance') {
-                FinancePanel.init(AppPrincipal.state.currentUser, AppPrincipal.state.db);
+                if(window.FinancePanel) FinancePanel.init(AppPrincipal.state.currentUser, AppPrincipal.state.db);
             }
         }
         loader.classList.add('hidden');
@@ -157,7 +152,7 @@ const AppPrincipal = {
 
     handleLogout: () => AppPrincipal.state.auth.signOut().then(() => window.location.href = 'index.html'),
 
-    // STRAVA LOOP
+    // STRAVA SYNC
     handleStravaConnect: () => { window.location.href = `https://www.strava.com/oauth/authorize?client_id=${window.STRAVA_PUBLIC_CONFIG.clientID}&response_type=code&redirect_uri=${window.STRAVA_PUBLIC_CONFIG.redirectURI}&approval_prompt=force&scope=read_all,activity:read_all,profile:read_all`; },
     
     exchangeStravaCode: async (code) => {
@@ -172,7 +167,6 @@ const AppPrincipal = {
         const { stravaTokenData, currentUser } = AppPrincipal.state;
         if (!stravaTokenData) return alert("Conecte o Strava primeiro.");
         const btn = document.getElementById('btn-strava-action');
-        const statusMsg = document.getElementById('strava-sync-status');
         if(btn) { btn.disabled=true; btn.textContent="Sincronizando..."; }
 
         try {
@@ -185,13 +179,11 @@ const AppPrincipal = {
             const perPage = 30;
 
             while (keepFetching) {
-                if(statusMsg) statusMsg.textContent = `Buscando página ${page}...`;
-                
                 const response = await fetch(`https://www.strava.com/api/v3/athlete/activities?per_page=${perPage}&page=${page}`, { headers: { 'Authorization': `Bearer ${stravaTokenData.accessToken}` } });
                 if (!response.ok) break;
                 
                 const activities = await response.json();
-                if (activities.length === 0) { keepFetching = false; break; }
+                if (!Array.isArray(activities) || activities.length === 0) { keepFetching = false; break; }
 
                 for(const act of activities) {
                     if(!act.start_date) continue;
@@ -206,7 +198,7 @@ const AppPrincipal = {
 
                     if(alreadyExists && !matchKey) continue;
 
-                    await new Promise(r => setTimeout(r, 100)); 
+                    await new Promise(r => setTimeout(r, 150)); 
                     const detailRes = await fetch(`https://www.strava.com/api/v3/activities/${act.id}`, { headers: { 'Authorization': `Bearer ${stravaTokenData.accessToken}` } });
                     const detail = await detailRes.json();
                     
@@ -259,21 +251,23 @@ const AppPrincipal = {
 
             if(Object.keys(updates).length > 0) {
                 await AppPrincipal.state.db.ref().update(updates);
-                alert(`Sync Completo! ${totalImported} atividades.`);
+                alert(`Sync Completo! ${totalImported} novos.`);
             } else {
                 alert("Tudo atualizado.");
             }
             document.getElementById('profile-modal').classList.add('hidden');
+
         } catch(e) { alert("Erro Sync: "+e.message); } 
-        finally { if(btn) { btn.disabled=false; btn.textContent="Sincronizar Strava"; } if(statusMsg) statusMsg.textContent=""; }
+        finally { if(btn) { btn.disabled=false; btn.textContent="Sincronizar Strava"; } }
     },
 
+    // FEEDBACK
     openFeedbackModal: (workoutId, ownerId, title) => {
         const modal = document.getElementById('feedback-modal');
+        if(!modal) return;
         AppPrincipal.state.modal = { isOpen: true, currentWorkoutId: workoutId, currentOwnerId: ownerId };
         document.getElementById('feedback-modal-title').textContent = title;
-        const commList = document.getElementById('comments-list');
-        commList.innerHTML = "Carregando...";
+        document.getElementById('comments-list').innerHTML = "Carregando...";
         const sd = document.getElementById('modal-strava-data');
         sd.classList.add('hidden');
 
@@ -299,30 +293,26 @@ const AppPrincipal = {
         
         AppPrincipal.state.db.ref(`workoutComments/${workoutId}`).on('value', s => {
             const list = document.getElementById('comments-list');
-            list.innerHTML = "";
-            s.forEach(c => {
-                const v = c.val();
-                list.innerHTML += `<div class="comment-item"><b>${v.name}:</b> ${v.text}</div>`;
-            });
+            if(list) {
+                list.innerHTML = "";
+                s.forEach(c => list.innerHTML += `<div class="comment-item"><b>${c.val().name}:</b> ${c.val().text}</div>`);
+            }
         });
         modal.classList.remove('hidden');
     },
-    
+
     handleFeedbackSubmit: async (e) => {
         e.preventDefault();
         const { currentWorkoutId, currentOwnerId } = AppPrincipal.state.modal;
         const btn = document.getElementById('save-feedback-btn');
-        if(btn) { btn.disabled=true; btn.textContent="Salvando..."; }
+        if(btn) btn.disabled=true;
 
         try {
             let imageUrl = null;
             const fileInput = document.getElementById('photo-upload-input');
             if (fileInput && fileInput.files.length > 0) imageUrl = await AppPrincipal.uploadFileToCloudinary(fileInput.files[0], 'workouts');
 
-            const updates = { 
-                status: document.getElementById('workout-status').value, 
-                feedback: document.getElementById('workout-feedback-text').value
-            };
+            const updates = { status: document.getElementById('workout-status').value, feedback: document.getElementById('workout-feedback-text').value };
             if(imageUrl) updates.imageUrl = imageUrl;
 
             await AppPrincipal.state.db.ref(`data/${currentOwnerId}/workouts/${currentWorkoutId}`).update(updates);
@@ -331,9 +321,9 @@ const AppPrincipal = {
             
             document.getElementById('feedback-modal').classList.add('hidden');
         } catch(err) { alert("Erro: " + err.message); } 
-        finally { if(btn) { btn.disabled=false; btn.textContent="Salvar Feedback"; } }
+        finally { if(btn) btn.disabled=false; }
     },
-    
+
     handleCommentSubmit: (e) => {
         e.preventDefault();
         const text = document.getElementById('comment-input').value;
@@ -354,20 +344,17 @@ const AppPrincipal = {
     handlePhotoUpload: async (e) => {
         const file = e.target.files[0];
         if(!file) return;
-        const feedback = document.getElementById('photo-upload-feedback');
-        if(feedback) feedback.textContent = "Analisando...";
         try {
             const base64 = await AppPrincipal.fileToBase64(file);
             const prompt = `Analise esta imagem. JSON: { "distancia": "X km", "tempo": "HH:MM:SS", "ritmo": "X:XX /km" }`;
             const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${window.GEMINI_API_KEY}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: [{ text: prompt }, { inlineData: { mimeType: file.type, data: base64 } }] }] }) });
             const data = await res.json();
             const json = JSON.parse(data.candidates[0].content.parts[0].text);
-            if(feedback) feedback.textContent = "Dados extraídos!";
             const sd = document.getElementById('modal-strava-content');
             const box = document.getElementById('modal-strava-data');
             if(box) box.classList.remove('hidden');
             if(sd) sd.innerHTML = `<div><b>IA Vision:</b> ${json.distancia} | ${json.tempo} | ${json.ritmo}</div>`;
-        } catch (err) { if(feedback) feedback.textContent = "Erro leitura IA."; }
+        } catch (err) { console.error(err); }
     },
     fileToBase64: (file) => new Promise((r, j) => { const reader = new FileReader(); reader.onload = () => r(reader.result.split(',')[1]); reader.onerror = j; reader.readAsDataURL(file); }),
 
