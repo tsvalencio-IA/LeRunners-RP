@@ -1,18 +1,18 @@
 /* =================================================================== */
-/* PANELS.JS V8.0 - RESTAURAÇÃO V2 + FINANCEIRO CORRIGIDO
+/* PANELS.JS V10.0 - V2 RESTAURADA + FINANCEIRO QUE SALVA
 /* =================================================================== */
 
 const panels = {};
 
 // ===================================================================
-// 1. ADMIN PANEL (COACH)
+// 1. ADMIN PANEL (COACH) - CÓDIGO V2 PURO COM EXIBIÇÃO COMPLETA
 // ===================================================================
 const AdminPanel = {
     state: { selectedAthleteId: null, athletes: {} },
     elements: {},
 
     init: (user, db) => {
-        console.log("AdminPanel V8.0: Init");
+        console.log("AdminPanel V10: Init");
         AdminPanel.state.db = db;
         AdminPanel.state.currentUser = user;
 
@@ -27,29 +27,28 @@ const AdminPanel = {
             iaHistoryList: document.getElementById('ia-history-list')
         };
 
+        // Binds
         if(AdminPanel.elements.search) {
             AdminPanel.elements.search.oninput = (e) => AdminPanel.renderList(e.target.value);
         }
         
         if(AdminPanel.elements.form) {
+            // Remove listener antigo clonando
             const newForm = AdminPanel.elements.form.cloneNode(true);
             AdminPanel.elements.form.parentNode.replaceChild(newForm, AdminPanel.elements.form);
             AdminPanel.elements.form = newForm;
             AdminPanel.elements.form.addEventListener('submit', AdminPanel.handleAddWorkout);
         }
 
-        const tabs = document.querySelectorAll('.tab-btn');
-        if(tabs) {
-            tabs.forEach(btn => {
-                btn.onclick = () => {
-                    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-                    document.querySelectorAll('.admin-tab-content').forEach(c => c.classList.remove('active'));
-                    btn.classList.add('active');
-                    const target = document.getElementById(`admin-tab-${btn.dataset.tab}`);
-                    if(target) target.classList.add('active');
-                };
-            });
-        }
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.onclick = () => {
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.admin-tab-content').forEach(c => c.classList.remove('active'));
+                btn.classList.add('active');
+                const target = document.getElementById(`admin-tab-${btn.dataset.tab}`);
+                if(target) target.classList.add('active');
+            };
+        });
         
         const btnDelete = document.getElementById('delete-athlete-btn');
         if(btnDelete) btnDelete.onclick = AdminPanel.deleteAthlete;
@@ -98,7 +97,7 @@ const AdminPanel = {
         AdminPanel.loadHistory(uid);
     },
 
-    // --- CARREGAMENTO DE TREINOS (RESTAURADO COMPLETO) ---
+    // --- AQUI ESTÁ A CORREÇÃO: EXIBE TUDO (V2) ---
     loadWorkouts: (uid) => {
         const div = AdminPanel.elements.workouts;
         if(!div) return;
@@ -119,6 +118,7 @@ const AdminPanel = {
 
             list.forEach(w => {
                 try {
+                    // Proteção contra dados nulos
                     const dateStr = w.date ? new Date(w.date).toLocaleDateString('pt-BR') : "--/--";
                     const title = w.title || "Sem Título";
                     const desc = w.description || "";
@@ -142,32 +142,27 @@ const AdminPanel = {
                         <div style="white-space:pre-wrap; font-size:0.95rem; color:#444; background:#f9f9f9; padding:8px; border-radius:4px; border:1px solid #eee;">${desc}</div>
                     `;
 
-                    // DADOS STRAVA COMPLETOS (RESTAURADO)
+                    // DADOS STRAVA: MAPA E PARCIAIS (RESTAURADO DA V2)
                     if(w.stravaData) {
                         let link = "";
-                        // Verifica link direto ou constrói com ID
-                        if(w.stravaData.mapLink) {
-                            link = `<a href="${w.stravaData.mapLink}" target="_blank" style="color:#fc4c02; font-weight:bold; text-decoration:none; margin-left:auto;">🗺️ Ver Mapa</a>`;
-                        } else if(w.stravaActivityId) {
-                            link = `<a href="https://www.strava.com/activities/${w.stravaActivityId}" target="_blank" style="color:#fc4c02; font-weight:bold; text-decoration:none; margin-left:auto;">🗺️ Ver Mapa</a>`;
-                        }
+                        if(w.stravaData.mapLink) link = `<a href="${w.stravaData.mapLink}" target="_blank" style="color:#fc4c02; font-weight:bold; text-decoration:none;">🗺️ Ver Mapa</a>`;
+                        else if(w.stravaActivityId) link = `<a href="https://www.strava.com/activities/${w.stravaActivityId}" target="_blank" style="color:#fc4c02; font-weight:bold; text-decoration:none;">🗺️ Ver Mapa</a>`;
 
                         html += `
                             <div style="margin-top:10px; border-top:1px solid #eee; padding-top:10px;">
-                                <div style="display:flex; justify-content:space-between; color:#fc4c02; font-size:0.8rem; font-weight:bold;">
+                                <div style="display:flex; justify-content:space-between; color:#fc4c02; font-size:0.8rem; font-weight:bold; margin-bottom:5px;">
                                     <span><i class='bx bxl-strava'></i> Strava Sync</span>
                                     ${link}
                                 </div>
-                                <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:5px; margin-top:5px; background:#fff5eb; padding:5px; text-align:center; font-size:0.9rem;">
+                                <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:5px; background:#fff5eb; padding:5px; text-align:center; font-size:0.9rem; border-radius:4px;">
                                     <div><small>Dist</small><br><strong>${w.stravaData.distancia||"-"}</strong></div>
                                     <div><small>Tempo</small><br><strong>${w.stravaData.tempo||"-"}</strong></div>
                                     <div><small>Pace</small><br><strong>${w.stravaData.ritmo||"-"}</strong></div>
                                 </div>
-                            </div>
-                        `;
-                        
-                        // TABELA DE PARCIAIS (SPLITS)
-                        if(w.stravaData.splits && Array.isArray(w.stravaData.splits) && w.stravaData.splits.length > 0) {
+                            </div>`;
+                            
+                        // PARCIAIS (SPLITS)
+                        if(w.stravaData.splits && Array.isArray(w.stravaData.splits)) {
                             let rows = "";
                             w.stravaData.splits.forEach(s => {
                                 rows += `<tr><td>${s.km || "-"}</td><td>${s.pace || "-"}</td><td>${s.elev || "0"}m</td></tr>`;
@@ -184,26 +179,23 @@ const AdminPanel = {
                         }
                     }
 
-                    html += `
-                        <div style="text-align:right; margin-top:10px; padding-top:5px; border-top:1px dashed #ddd;">
-                            <button class="btn-del btn btn-danger btn-small" style="font-size:0.8rem; padding:2px 8px;">Excluir</button>
-                        </div>
-                    `;
-
+                    // Botão Excluir
+                    html += `<div style="text-align:right; margin-top:10px; border-top:1px dashed #ddd;"><button class="btn-del btn btn-danger btn-small" style="font-size:0.8rem; padding:2px 8px;">Excluir</button></div>`;
+                    
                     card.innerHTML = html;
 
-                    // Listeners Seguros
+                    // Listeners
                     card.addEventListener('click', (e) => {
                         if(!e.target.closest('button') && !e.target.closest('a') && !e.target.closest('details')) {
                             AppPrincipal.openFeedbackModal(w.key, uid, title);
                         }
                     });
 
-                    const delBtn = card.querySelector('.btn-del');
-                    if(delBtn) {
-                        delBtn.onclick = (ev) => {
+                    const btnDel = card.querySelector('.btn-del');
+                    if(btnDel) {
+                        btnDel.onclick = (ev) => {
                             ev.stopPropagation();
-                            if(confirm("Tem certeza?")) {
+                            if(confirm("Apagar?")) {
                                 const u={}; 
                                 u[`/data/${uid}/workouts/${w.key}`]=null; 
                                 u[`/publicWorkouts/${w.key}`]=null;
@@ -213,9 +205,7 @@ const AdminPanel = {
                     }
 
                     div.appendChild(card);
-                } catch (error) {
-                    console.error("Erro Card:", error);
-                }
+                } catch(e) { console.error("Erro Card:", e); }
             });
         });
     },
@@ -228,39 +218,33 @@ const AdminPanel = {
         
         const date = f.querySelector('#workout-date').value;
         const title = f.querySelector('#workout-title').value;
-        if(!date || !title) return alert("Obrigatório: Data e Título");
+        if(!date || !title) return alert("Data e Título obrigatórios.");
 
         const getVal = (id) => f.querySelector(id) ? f.querySelector(id).value : "";
 
         let desc = `[${getVal('#workout-modalidade')}] - ${getVal('#workout-tipo-treino')}\n`;
         desc += `Intensidade: ${getVal('#workout-intensidade')} | Percurso: ${getVal('#workout-percurso')}\n`;
-        
         const dist = getVal('#workout-distancia');
         if(dist) desc += `Dist: ${dist}km | `;
         const tempo = getVal('#workout-tempo');
         if(tempo) desc += `Tempo: ${tempo} | `;
         const pace = getVal('#workout-pace');
         if(pace) desc += `Pace: ${pace}`;
-        
         const obs = getVal('#workout-observacoes');
         if(obs) desc += `\n\nObs: ${obs}`;
 
         const data = {
-            date: date,
-            title: title,
-            description: desc,
-            status: 'planejado',
-            createdBy: AdminPanel.state.currentUser.uid,
-            createdAt: new Date().toISOString()
+            date: date, title: title, description: desc,
+            status: 'planejado', createdBy: AdminPanel.state.currentUser.uid, createdAt: new Date().toISOString()
         };
 
         AdminPanel.state.db.ref(`data/${uid}/workouts`).push(data).then(() => {
-            alert("Salvo!");
+            alert("Treino salvo!");
             f.querySelector('#workout-title').value = "";
             f.querySelector('#workout-observacoes').value = "";
         });
     },
-
+    
     loadHistory: (uid) => {
         const div = AdminPanel.elements.iaHistoryList;
         if(!div) return;
@@ -268,9 +252,7 @@ const AdminPanel = {
             div.innerHTML = "";
             if(!s.exists()) { div.innerHTML = "<p>Sem histórico.</p>"; return; }
             const list=[]; s.forEach(c=>list.push(c.val())); list.reverse();
-            list.forEach(h => {
-                div.innerHTML += `<div style="padding:8px; border-bottom:1px solid #eee; background:#f9f9f9; margin-bottom:5px;"><b>${new Date(h.date).toLocaleDateString()}</b><br><small>${(h.text||"").substring(0,100)}...</small></div>`;
-            });
+            list.forEach(h => div.innerHTML += `<div style="padding:8px; border-bottom:1px solid #eee; background:#f9f9f9; margin-bottom:5px;"><b>${new Date(h.date).toLocaleDateString()}</b><br><small>${(h.text||"").substring(0,100)}...</small></div>`);
         });
     },
 
@@ -279,16 +261,16 @@ const AdminPanel = {
         if(!div) return;
         AdminPanel.state.db.ref('pendingApprovals').on('value', s => {
             div.innerHTML = "";
-            if(!s.exists()) { div.innerHTML = "Nada."; return; }
+            if(!s.exists()) { div.innerHTML = "Nenhuma pendência."; return; }
             s.forEach(c => {
-                const r = document.createElement('div'); r.className = 'pending-item';
-                const v = c.val()||{};
-                r.innerHTML = `<span>${v.name||"Anon"}</span> <button class="btn btn-success btn-small">OK</button>`;
-                r.querySelector('button').onclick = () => {
+                const row = document.createElement('div'); row.className = 'pending-item';
+                const v = c.val() || {};
+                row.innerHTML = `<span>${v.name||"Anon"}</span> <button class="btn btn-success btn-small">OK</button>`;
+                row.querySelector('button').onclick = () => {
                     const u={}; u[`/users/${c.key}`]={name:v.name,email:v.email,role:'atleta',createdAt:new Date().toISOString()}; u[`/data/${c.key}`]={workouts:{}}; u[`/pendingApprovals/${c.key}`]=null;
                     AdminPanel.state.db.ref().update(u);
                 };
-                div.appendChild(r);
+                div.appendChild(row);
             });
         });
     },
@@ -304,36 +286,33 @@ const AdminPanel = {
 
     runIA: async () => {
         const uid = AdminPanel.state.selectedAthleteId;
-        const out = document.getElementById('ia-analysis-output');
+        const output = document.getElementById('ia-analysis-output');
         document.getElementById('ia-analysis-modal').classList.remove('hidden');
-        out.textContent = "Analisando...";
+        output.textContent = "Analisando...";
         try {
             const snap = await AdminPanel.state.db.ref(`data/${uid}/workouts`).limitToLast(15).once('value');
             const res = await AppPrincipal.callGeminiTextAPI(`Analise: ${JSON.stringify(snap.val())}`);
-            out.textContent = res;
+            output.textContent = res;
             AppPrincipal.state.currentAnalysisData = { date: new Date().toISOString(), text: res, coachId: AdminPanel.state.currentUser.uid };
             document.getElementById('save-ia-analysis-btn').classList.remove('hidden');
-        } catch(e) { out.textContent = e.message; }
+        } catch(e) { output.textContent = e.message; }
     }
 };
 
 // ===================================================================
-// 2. ATLETA PANEL (COM MAPAS E SPLITS)
+// 2. ATLETA PANEL (COMPLETO)
 // ===================================================================
 const AtletaPanel = {
     init: (user, db) => {
         const list = document.getElementById('atleta-workouts-list');
-        const welcome = document.getElementById('atleta-welcome-name');
-        if(welcome && AppPrincipal.state.userData) welcome.textContent = AppPrincipal.state.userData.name;
+        if(document.getElementById('atleta-welcome-name')) document.getElementById('atleta-welcome-name').textContent = AppPrincipal.state.userData.name;
         document.getElementById('log-manual-activity-btn').onclick = () => document.getElementById('log-activity-modal').classList.remove('hidden');
         if(!list) return;
-
+        
         db.ref(`data/${user.uid}/workouts`).orderByChild('date').limitToLast(50).on('value', snap => {
-            list.innerHTML = "";
-            if(!snap.exists()) { list.innerHTML = "<p>Sem treinos.</p>"; return; }
+            list.innerHTML = ""; if(!snap.exists()) { list.innerHTML = "Sem treinos."; return; }
             const arr = []; snap.forEach(c => arr.push({key:c.key, ...c.val()}));
             arr.sort((a,b) => new Date(b.date||0) - new Date(a.date||0));
-
             arr.forEach(w => {
                 try {
                     const card = document.createElement('div'); card.className = 'workout-card';
@@ -341,22 +320,17 @@ const AtletaPanel = {
                     
                     let extra = "";
                     if(w.stravaData) {
-                        let link = w.stravaData.mapLink ? `<a href="${w.stravaData.mapLink}" target="_blank" style="color:#fc4c02; font-weight:bold; text-decoration:none;">🗺️ Ver Mapa</a>` : "";
-                        if(!link && w.stravaActivityId) link = `<a href="https://www.strava.com/activities/${w.stravaActivityId}" target="_blank" style="color:#fc4c02; font-weight:bold; text-decoration:none;">🗺️ Ver Mapa</a>`;
-                        
+                        let link = w.stravaData.mapLink ? `<a href="${w.stravaData.mapLink}" target="_blank" style="color:#fc4c02;">🗺️ Mapa</a>` : "";
+                        if(!link && w.stravaActivityId) link = `<a href="https://www.strava.com/activities/${w.stravaActivityId}" target="_blank" style="color:#fc4c02;">🗺️ Mapa</a>`;
                         extra = `<div style="color:#e65100; font-size:0.8rem; margin-top:5px;"><b>Strava:</b> ${w.stravaData.distancia} | ${w.stravaData.ritmo} ${link}</div>`;
                     }
 
                     card.innerHTML = `
                         <div style="display:flex; justify-content:space-between;"><b>${new Date(w.date).toLocaleDateString('pt-BR')}</b><span class="status-tag ${w.status}">${w.status}</span></div>
-                        <div style="font-weight:bold; margin:5px 0;">${w.title}</div>
-                        <div style="font-size:0.9rem; color:#666;">${(w.description||"").substring(0,100)}...</div>
-                        ${extra}
+                        <div style="font-weight:bold;">${w.title}</div><div style="font-size:0.9rem; color:#666;">${(w.description||"").substring(0,100)}...</div>${extra}
                         <div style="text-align:right; margin-top:10px;"><button class="btn btn-primary btn-small">Ver</button></div>`;
                     
-                    card.onclick = (e) => {
-                         if(!e.target.closest('a')) AppPrincipal.openFeedbackModal(w.key, user.uid, w.title);
-                    };
+                    card.onclick = (e) => { if(!e.target.closest('a')) AppPrincipal.openFeedbackModal(w.key, user.uid, w.title); };
                     list.appendChild(card);
                 } catch(e) { console.error("Erro Atleta:", e); }
             });
@@ -385,9 +359,7 @@ const FeedPanel = {
                             <div style="width:30px; height:30px; background:#ccc; border-radius:50%; display:flex; justify-content:center; align-items:center;">${w.ownerName?w.ownerName[0]:"?"}</div>
                             <div><b>${w.ownerName||"Atleta"}</b> <small style="color:#777;">${new Date(w.date).toLocaleDateString()} ${icon} ${mapL}</small></div>
                         </div>
-                        <div><b>${w.title||"Treino"}</b></div>
-                        <div style="font-size:0.9rem;">${w.feedback||w.description||""}</div>`;
-                    
+                        <div><b>${w.title||"Treino"}</b></div><div style="font-size:0.9rem;">${w.feedback||w.description||""}</div>`;
                     card.onclick = (e) => { if(!e.target.closest('a')) AppPrincipal.openFeedbackModal(w.key, w.ownerId, w.title); };
                     list.appendChild(card);
                 } catch(e) { console.error("Erro Feed:", e); }
@@ -397,16 +369,17 @@ const FeedPanel = {
 };
 
 // ===================================================================
-// 4. FINANCE PANEL (CORRIGIDO)
+// 4. FINANCE PANEL (CORRIGIDO E FUNCIONAL)
 // ===================================================================
 const FinancePanel = {
     state: { items: [] },
     init: (user, db) => {
-        console.log("FinancePanel: Init");
+        console.log("FinancePanel V10: Init");
         FinancePanel.state.db = db;
         FinancePanel.state.user = user;
         FinancePanel.switchTab('receber');
         
+        // Listener de Saldo
         db.ref(`finance`).on('value', s => {
             let rec=0, exp=0;
             if(s.exists()) {
@@ -421,6 +394,15 @@ const FinancePanel = {
             if(elExp) elExp.textContent = `R$ ${exp.toFixed(2)}`;
             if(elSal) elSal.textContent = `R$ ${(rec-exp).toFixed(2)}`;
         });
+        
+        // CORREÇÃO CRÍTICA: BIND DO FORMULÁRIO AQUI
+        const form = document.getElementById('finance-form');
+        if(form) {
+            // Clona para garantir listener limpo
+            const newForm = form.cloneNode(true);
+            form.parentNode.replaceChild(newForm, form);
+            newForm.addEventListener('submit', FinancePanel.handleSaveTransaction);
+        }
     },
 
     switchTab: (tab) => {
@@ -428,7 +410,6 @@ const FinancePanel = {
         if(!div) return;
         div.innerHTML = ""; 
         
-        // Botão Novo
         const controls = document.createElement('div');
         controls.style.marginBottom = "15px";
         const btn = document.createElement('button');
@@ -447,7 +428,7 @@ const FinancePanel = {
         
         ref.on('value', s => {
             listDiv.innerHTML = "";
-            if(!s.exists()) { listDiv.innerHTML = "<p style='color:#777;'>Nenhum registro encontrado.</p>"; return; }
+            if(!s.exists()) { listDiv.innerHTML = "<p style='color:#777;'>Nenhum registro.</p>"; return; }
             
             s.forEach(c => {
                 const i = c.val();
@@ -500,43 +481,34 @@ const FinancePanel = {
         if(typeInput) typeInput.value = type;
         
         const title = document.getElementById('finance-modal-title');
-        
-        // AJUSTE DO TÍTULO (CORREÇÃO)
-        if (type === 'estoque') {
-            title.textContent = "Novo Produto";
-        } else if (type === 'receber') {
-            title.textContent = "Nova Receita";
-        } else {
-            title.textContent = "Nova Despesa";
-        }
+        if(title) title.textContent = type === 'receber' ? "Nova Receita" : (type === 'pagar' ? "Nova Despesa" : "Novo Produto");
         
         const stockArea = document.getElementById('fin-stock-area');
         const athleteGroup = document.getElementById('fin-athlete-group');
+        const dateGroup = document.getElementById('fin-date-group');
         
         // Reset
         if(stockArea) stockArea.classList.add('hidden');
         if(athleteGroup) athleteGroup.classList.add('hidden');
+        if(dateGroup) dateGroup.classList.remove('hidden');
         
-        // Lógica de exibição de campos
+        // Lógica de Campos (Correção)
         if(type === 'estoque') {
-            // Para estoque, não precisa de aluno ou área de movimentação, apenas Descrição (Nome) e Valor (Preço)
-            // Vamos usar o campo de quantidade do stockArea? Não, o form padrão tem Desc/Valor/Data.
-            // Vamos adaptar o form:
-            // Para estoque, precisamos de QUANTIDADE.
+            // Estoque: Esconde Data e Aluno, Mostra Qtd
+            if(dateGroup) dateGroup.classList.add('hidden');
             if(stockArea) {
                 stockArea.classList.remove('hidden');
-                // Esconde o seletor de produto, deixa só qtd
+                // Esconde select de produto (estamos criando um novo)
                 const prodSel = document.getElementById('fin-product-select');
                 if(prodSel) prodSel.parentElement.classList.add('hidden');
             }
         } else if (type === 'receber') {
-            if(stockArea) {
-                stockArea.classList.remove('hidden');
-                const prodSel = document.getElementById('fin-product-select');
-                if(prodSel) prodSel.parentElement.classList.remove('hidden');
-            }
+            if(stockArea) stockArea.classList.remove('hidden');
             if(athleteGroup) athleteGroup.classList.remove('hidden');
+            const prodSel = document.getElementById('fin-product-select');
+            if(prodSel) prodSel.parentElement.classList.remove('hidden');
             
+            // Popula
             const sel = document.getElementById('fin-product-select');
             if(sel) {
                 sel.innerHTML = "<option value=''>Mensalidade (Sem produto)</option>";
@@ -544,7 +516,7 @@ const FinancePanel = {
                     s.forEach(c => {
                          const opt = document.createElement('option');
                          opt.value = c.key;
-                         opt.text = `${c.val().name} (Estoque: ${c.val().quantity})`;
+                         opt.text = `${c.val().name} (Qtd: ${c.val().quantity})`;
                          sel.appendChild(opt);
                     });
                 });
@@ -575,16 +547,19 @@ const FinancePanel = {
         const date = document.getElementById('fin-date').value;
         
         if(type === 'estoque') {
+            // Novo Produto: Salva nome, preço e quantidade inicial
             const qty = parseFloat(document.getElementById('fin-qty').value || 0);
             FinancePanel.state.db.ref('stock').push({ name: desc, price: val, quantity: qty }); 
         } else {
             const prodId = document.getElementById('fin-product-select').value;
             const qty = parseFloat(document.getElementById('fin-qty').value || 0);
             
+            // Baixa de estoque se for venda
             if(type === 'receber' && prodId) {
                 FinancePanel.state.db.ref(`stock/${prodId}/quantity`).transaction(q => (q || 0) - qty);
             }
             
+            // Salva finança
             const path = type === 'receber' ? 'receivables' : 'expenses';
             FinancePanel.state.db.ref(`finance/${path}`).push({
                 description: desc, amount: val, date: date, 
@@ -594,10 +569,13 @@ const FinancePanel = {
         document.getElementById('finance-modal').classList.add('hidden');
         e.target.reset();
         
-        // Restaura visibilidade padrão dos campos
+        // Reseta campos
         const prodSel = document.getElementById('fin-product-select');
         if(prodSel) prodSel.parentElement.classList.remove('hidden');
+        const dateGroup = document.getElementById('fin-date-group');
+        if(dateGroup) dateGroup.classList.remove('hidden');
     }
 };
 
+// GLOBAL INIT
 window.panels = { init: () => {}, cleanup: () => { if(AdminPanel.state.db) AdminPanel.state.db.ref().off(); } };
