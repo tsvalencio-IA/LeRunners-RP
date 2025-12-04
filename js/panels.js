@@ -1,5 +1,5 @@
 /* =================================================================== */
-/* ARQUIVO DE MÓDULOS (V6.1 - FINAL: CORREÇÃO VISUAL KPI/IA + FEED V2)
+/* ARQUIVO DE MÓDULOS (V6.2 - FINAL: RESTAURAÇÃO QUERY IA + FEED V2)
 /* =================================================================== */
 
 // ===================================================================
@@ -10,7 +10,7 @@ const AdminPanel = {
     elements: {},
 
     init: (user, db) => {
-        console.log("AdminPanel V6.1: Inicializado.");
+        console.log("AdminPanel V6.2: Inicializado.");
         AdminPanel.state = { db, currentUser: user, selectedAthleteId: null, athletes: {} };
 
         AdminPanel.elements = {
@@ -71,7 +71,7 @@ const AdminPanel = {
         if(tabKpisBtn) tabKpisBtn.classList.toggle('active', !isPrescrever);
         if(adminTabKpis) adminTabKpis.classList.toggle('active', !isPrescrever);
         
-        // CORREÇÃO CRÍTICA: Se mudar para a aba KPIs, recarrega a lista para garantir atualização
+        // Recarrega lista ao entrar na aba KPIs para garantir atualização
         if (!isPrescrever && AdminPanel.state.selectedAthleteId) {
             AdminPanel.loadIaHistory(AdminPanel.state.selectedAthleteId);
         }
@@ -259,16 +259,17 @@ const AdminPanel = {
         });
     },
     
-    // CORREÇÃO KPI DEFINITIVA: Exibição Correta do Histórico
+    // CORREÇÃO KPI (RESTAURAÇÃO V2): Usa orderByChild('analysisDate')
     loadIaHistory: (athleteId) => {
         const { iaHistoryList } = AdminPanel.elements;
         if (!iaHistoryList) return; 
         iaHistoryList.innerHTML = "<p>Carregando histórico...</p>";
         
         const historyRef = AdminPanel.state.db.ref(`iaAnalysisHistory/${athleteId}`);
-        // Usa limitToLast para pegar os últimos e não depender de datas quebradas
-        const query = historyRef.limitToLast(50);
+        // Restaura a query original que funcionava (ordena por data)
+        const query = historyRef.orderByChild('analysisDate').limitToLast(50);
         
+        // Garante que o listener antigo seja removido corretamente
         if (AppPrincipal.state.listeners['adminIaHistory']) {
             if(typeof AppPrincipal.state.listeners['adminIaHistory'].off === 'function') {
                 AppPrincipal.state.listeners['adminIaHistory'].off();
@@ -508,44 +509,6 @@ const AdminPanel = {
                     if (snapshot.exists()) myLikeRef.remove(); else myLikeRef.set(true);
                 });
             });
-        }
-    },
-
-    handleAnalyzeAthleteIA: async () => {
-        const { selectedAthleteId } = AdminPanel.state;
-        if (!selectedAthleteId) return alert("Selecione um atleta.");
-        
-        AppPrincipal.openIaAnalysisModal(); 
-        const iaAnalysisOutput = AppPrincipal.elements.iaAnalysisOutput;
-        const saveBtn = AppPrincipal.elements.saveIaAnalysisBtn;
-        
-        iaAnalysisOutput.textContent = "Coletando dados do atleta...";
-        saveBtn.classList.add('hidden'); 
-
-        try {
-            const athleteName = AdminPanel.state.athletes[selectedAthleteId].name;
-            const dataRef = AdminPanel.state.db.ref(`data/${selectedAthleteId}/workouts`);
-            const snapshot = await dataRef.orderByChild('date').limitToLast(10).once('value');
-            
-            if (!snapshot.exists()) throw new Error("Nenhum dado de treino encontrado.");
-            const workoutData = snapshot.val();
-            
-            const prompt = `ATUE COMO: Coach de Corrida. ATLETA: ${athleteName}. DADOS: ${JSON.stringify(workoutData, null, 2)}. Crie um relatório breve e direto sobre consistência e performance.`;
-            
-            iaAnalysisOutput.textContent = "Gerando análise (Gemini)...";
-            const analysisResult = await AppPrincipal.callGeminiTextAPI(prompt);
-            
-            iaAnalysisOutput.textContent = analysisResult;
-            AppPrincipal.state.currentAnalysisData = {
-                analysisDate: new Date().toISOString(),
-                coachUid: AdminPanel.state.currentUser.uid,
-                prompt: prompt,
-                analysisResult: analysisResult
-            };
-            saveBtn.classList.remove('hidden'); 
-
-        } catch (err) {
-            iaAnalysisOutput.textContent = `ERRO: ${err.message}`;
         }
     }
 };
