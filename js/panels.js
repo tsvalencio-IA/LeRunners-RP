@@ -1,5 +1,5 @@
 /* =================================================================== */
-/* ARQUIVO DE MÓDULOS (V4.1 - CORREÇÃO CRÍTICA DE LÓGICA E DADOS)
+/* ARQUIVO DE MÓDULOS (V4.2 - FINAL STABLE: FINANCEIRO, FEED & KPI)
 /* =================================================================== */
 
 // ===================================================================
@@ -10,7 +10,7 @@ const AdminPanel = {
     elements: {},
 
     init: (user, db) => {
-        console.log("AdminPanel V4.1: Inicializado.");
+        console.log("AdminPanel V4.2: Inicializado.");
         AdminPanel.state = { db, currentUser: user, selectedAthleteId: null, athletes: {} };
 
         AdminPanel.elements = {
@@ -43,13 +43,11 @@ const AdminPanel = {
         
         // Listeners Abas
         AdminPanel.elements.tabPrescreverBtn.addEventListener('click', () => AdminPanel.switchTab('prescrever'));
-        
-        // CORREÇÃO KPI 1: Não recarregar histórico ao clicar na aba (evita listener duplo)
         AdminPanel.elements.tabKpisBtn.addEventListener('click', () => AdminPanel.switchTab('kpis'));
         
         AdminPanel.elements.analyzeAthleteBtnIa.addEventListener('click', AdminPanel.handleAnalyzeAthleteIA);
         
-        // Carregar dados
+        // Carregar dados iniciais
         AdminPanel.loadPendingApprovals();
         AdminPanel.loadAthletes();
     },
@@ -68,7 +66,6 @@ const AdminPanel = {
 
     loadPendingApprovals: () => {
         const pendingRef = AdminPanel.state.db.ref('pendingApprovals');
-        // CORREÇÃO LISTENER: Guarda a REF, não o callback
         AppPrincipal.state.listeners['adminPending'] = pendingRef;
         
         pendingRef.on('value', snapshot => {
@@ -109,7 +106,6 @@ const AdminPanel = {
         const athletesRef = AdminPanel.state.db.ref('users');
         const query = athletesRef.orderByChild('name');
         
-        // CORREÇÃO LISTENER
         AppPrincipal.state.listeners['adminAthletes'] = query;
         
         query.on('value', snapshot => {
@@ -124,7 +120,7 @@ const AdminPanel = {
         athleteList.innerHTML = "";
         
         if (AdminPanel.state.selectedAthleteId && !AdminPanel.state.athletes[AdminPanel.state.selectedAthleteId]) {
-            AdminPanel.selectAthlete(null, null); // Desseleciona
+            AdminPanel.selectAthlete(null, null);
         }
 
         Object.entries(AdminPanel.state.athletes).forEach(([uid, userData]) => {
@@ -201,7 +197,6 @@ const AdminPanel = {
     },
 
     selectAthlete: (uid, name) => {
-        // Limpa listeners ANTES de setar os novos
         AppPrincipal.cleanupListeners(true);
 
         if (uid === null) {
@@ -214,7 +209,6 @@ const AdminPanel = {
             AdminPanel.elements.athleteDetailContent.classList.remove('hidden');
             AdminPanel.switchTab('prescrever'); 
             
-            // Carrega os dados APENAS AQUI (Centralizado)
             AdminPanel.loadWorkouts(uid);
             AdminPanel.loadIaHistory(uid);
         }
@@ -229,9 +223,8 @@ const AdminPanel = {
         workoutsList.innerHTML = "<p>Carregando treinos...</p>";
         
         const workoutsRef = AdminPanel.state.db.ref(`data/${athleteId}/workouts`);
-        const query = workoutsRef.orderByChild('date');
+        const query = workoutsRef.orderByChild('date'); // Ordena por data do treino
         
-        // CORREÇÃO LISTENER
         AppPrincipal.state.listeners['adminWorkouts'] = query;
         
         query.on('value', snapshot => {
@@ -240,9 +233,20 @@ const AdminPanel = {
                 workoutsList.innerHTML = "<p>Nenhum treino agendado.</p>";
                 return;
             }
+            // Para treinos, queremos a ordem de data (futuro em baixo, passado em cima ou vice versa)
+            // Firebase orderna Ascendente. Vamos inverter para ver o mais longe no topo? 
+            // Não, padrão é mais próximo. Vamos manter a ordem do firebase e inverter no array se precisar.
+            // Para agenda, Ascendente (padrão) é bom.
+            let items = [];
             snapshot.forEach(childSnapshot => {
-                const card = AdminPanel.createWorkoutCard(childSnapshot.key, childSnapshot.val(), athleteId);
-                workoutsList.prepend(card);
+                items.push({key: childSnapshot.key, val: childSnapshot.val()});
+            });
+            
+            // Inverter para mostrar os mais recentes/futuros no topo se desejar, 
+            // mas padrão agenda é data crescente.
+            items.forEach(item => {
+                const card = AdminPanel.createWorkoutCard(item.key, item.val, athleteId);
+                workoutsList.appendChild(card); // Append para manter ordem de data
             });
         });
     },
@@ -253,9 +257,9 @@ const AdminPanel = {
         iaHistoryList.innerHTML = "<p>Carregando histórico...</p>";
         
         const historyRef = AdminPanel.state.db.ref(`iaAnalysisHistory/${athleteId}`);
-        const query = historyRef.orderByChild('analysisDate').limitToLast(10);
+        // CORREÇÃO KPI: Ordenar por chave (criação) garante que o ultimo salvo apareça
+        const query = historyRef.limitToLast(10);
         
-        // CORREÇÃO LISTENER: Salva a query para limpeza correta
         AppPrincipal.state.listeners['adminIaHistory'] = query;
         
         query.on('value', snapshot => {
@@ -266,14 +270,11 @@ const AdminPanel = {
             }
             let items = [];
             snapshot.forEach(c => items.push({id: c.key, data: c.val()}));
-            // Inverte para o mais recente ficar em cima
+            // Inverte para o mais recente (último criado) ficar em cima
             items.reverse().forEach(item => iaHistoryList.appendChild(AdminPanel.createIaHistoryCard(item.id, item.data)));
         });
     },
 
-    // ===================================================================
-    // SALVAMENTO ESTRUTURADO (ATUALIZAÇÃO V4.0)
-    // ===================================================================
     handleAddWorkout: (e) => {
         e.preventDefault();
         const { selectedAthleteId } = AdminPanel.state;
@@ -286,7 +287,6 @@ const AdminPanel = {
         
         if (!date || !title) return alert("Data e Título são obrigatórios.");
 
-        // Dados Estruturados
         const modalidade = addWorkoutForm.querySelector('#workout-modalidade').value;
         const tipoTreino = addWorkoutForm.querySelector('#workout-tipo-treino').value;
         const intensidade = addWorkoutForm.querySelector('#workout-intensidade').value;
@@ -298,7 +298,6 @@ const AdminPanel = {
         const velocidade = addWorkoutForm.querySelector('#workout-velocidade').value.trim();
         const observacoes = addWorkoutForm.querySelector('#workout-observacoes').value.trim();
 
-        // Monta Descrição Visual
         let description = `[${modalidade}] - [${tipoTreino}]\n`;
         description += `Intensidade: ${intensidade}\n`;
         description += `Percurso: ${percurso}\n`;
@@ -309,12 +308,10 @@ const AdminPanel = {
         if (velocidade) description += `Velocidade: ${velocidade}\n`;
         if (observacoes) description += `--- \nObservações:\n${observacoes}`;
 
-        // Objeto Completo
         const workoutData = {
             date: date,
             title: title,
             description: description,
-            // Campos estruturados salvos separadamente
             structure: {
                 modalidade, tipoTreino, intensidade, percurso, distancia, tempo, pace, velocidade
             },
@@ -385,7 +382,7 @@ const AdminPanel = {
         const el = document.createElement('div');
         el.className = 'workout-card';
         const date = new Date(data.analysisDate).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
-        const summary = data.analysisResult.split('\n').slice(0, 3).join('\n') + '...';
+        const summary = data.analysisResult ? (data.analysisResult.split('\n').slice(0, 3).join('\n') + '...') : 'Sem resumo';
         el.innerHTML = `
             <div class="workout-card-header">
                 <div><span class="date">Análise de ${date}</span></div>
@@ -421,7 +418,6 @@ const AdminPanel = {
         const likesRef = AdminPanel.state.db.ref(`workoutLikes/${workoutId}`);
         const commentsRef = AdminPanel.state.db.ref(`workoutComments/${workoutId}`);
         
-        // CORREÇÃO LISTENER
         AppPrincipal.state.listeners[`likes_${workoutId}`] = likesRef;
         
         likesRef.on('value', snapshot => {
@@ -441,7 +437,6 @@ const AdminPanel = {
             }
         });
         
-        // CORREÇÃO LISTENER
         AppPrincipal.state.listeners[`comments_${workoutId}`] = commentsRef;
         
         commentsRef.on('value', snapshot => commentCount.textContent = snapshot.numChildren());
@@ -497,14 +492,14 @@ const AdminPanel = {
 };
 
 // ===================================================================
-// 4. FinancePanel (NOVO MÓDULO CORRIGIDO)
+// 4. FinancePanel (NOVO MÓDULO CORRIGIDO V2)
 // ===================================================================
 const FinancePanel = {
     state: {},
     elements: {},
 
     init: (user, db) => {
-        console.log("FinancePanel V1.1: Inicializado com Correções.");
+        console.log("FinancePanel V1.2: Inicializado com Correções de Saldo.");
         FinancePanel.state = { db, currentUser: user, inventory: {}, transactions: [] };
         
         FinancePanel.elements = {
@@ -535,22 +530,16 @@ const FinancePanel = {
             inventoryList: document.getElementById('finance-inventory-list')
         };
 
-        // Eventos de Abas
         FinancePanel.elements.tabLancamentosBtn.addEventListener('click', () => FinancePanel.switchTab('lancamentos'));
         FinancePanel.elements.tabEstoqueBtn.addEventListener('click', () => FinancePanel.switchTab('estoque'));
         
-        // Logica Dinâmica do Form de Transação
         FinancePanel.elements.finType.addEventListener('change', FinancePanel.handleTypeChange);
         FinancePanel.elements.finCategory.addEventListener('change', FinancePanel.handleCategoryChange);
         
-        // Submits
         FinancePanel.elements.transForm.addEventListener('submit', FinancePanel.handleTransactionSubmit);
         FinancePanel.elements.prodForm.addEventListener('submit', FinancePanel.handleProductSubmit);
 
-        // Preenche Select de Alunos
         FinancePanel.populateStudents();
-
-        // Carrega Dados do Firebase
         FinancePanel.loadData();
     },
 
@@ -598,12 +587,11 @@ const FinancePanel = {
         const type = FinancePanel.elements.finType.value;
         const { finStudentSelector, finProductSelector } = FinancePanel.elements;
         
-        // Lógica de visualização
         if (type === 'receita' && cat === 'Mensalidade') {
             finStudentSelector.classList.remove('hidden');
             finProductSelector.classList.add('hidden');
         } else if (type === 'receita' && cat === 'Venda') {
-            finStudentSelector.classList.remove('hidden'); // Opcional: Saber quem comprou
+            finStudentSelector.classList.remove('hidden');
             finProductSelector.classList.remove('hidden');
         } else {
             finStudentSelector.classList.add('hidden');
@@ -613,10 +601,8 @@ const FinancePanel = {
 
     loadData: () => {
         const uid = FinancePanel.state.currentUser.uid;
-        // Caminho Seguro: data/UID/finance
         const financeRef = FinancePanel.state.db.ref(`data/${uid}/finance`);
         
-        // CORREÇÃO LISTENER
         AppPrincipal.state.listeners['financeData'] = financeRef;
         
         financeRef.on('value', snapshot => {
@@ -645,26 +631,39 @@ const FinancePanel = {
     },
 
     updateSummary: () => {
-        let rec = 0, desp = 0;
+        let recMonth = 0, despMonth = 0;
+        let totalSaldo = 0; // Saldo Vitalício
+        
         const now = new Date();
         const currentMonth = now.getMonth();
         const currentYear = now.getFullYear();
         
         FinancePanel.state.transactions.forEach(([key, t]) => {
-            const tDate = new Date(t.date);
-            // CORREÇÃO CRÍTICA DO FINANCEIRO: Verifica MÊS e ANO
-            if (tDate.getMonth() === currentMonth && tDate.getFullYear() === currentYear) {
-                if (t.type === 'receita') rec += parseFloat(t.amount);
-                else desp += parseFloat(t.amount);
+            const val = parseFloat(t.amount);
+            const tDate = new Date(t.date); // Atenção: formato YYYY-MM-DD
+            
+            // CORREÇÃO: Saldo Total considera tudo
+            if (t.type === 'receita') totalSaldo += val;
+            else totalSaldo -= val;
+
+            // CORREÇÃO: Cards de Mês consideram Ano+Mês (GMT safe)
+            // Ajuste para evitar problema de fuso horário na data "YYYY-MM-DD"
+            // Criando data com hora meio-dia para garantir o dia correto
+            const parts = t.date.split('-');
+            const safeDate = new Date(parts[0], parts[1]-1, parts[2]); 
+            
+            if (safeDate.getMonth() === currentMonth && safeDate.getFullYear() === currentYear) {
+                if (t.type === 'receita') recMonth += val;
+                else despMonth += val;
             }
         });
 
-        FinancePanel.elements.totalReceita.textContent = `R$ ${rec.toFixed(2)}`;
-        FinancePanel.elements.totalDespesa.textContent = `R$ ${desp.toFixed(2)}`;
-        FinancePanel.elements.saldo.textContent = `R$ ${(rec - desp).toFixed(2)}`;
+        FinancePanel.elements.totalReceita.textContent = `R$ ${recMonth.toFixed(2)}`;
+        FinancePanel.elements.totalDespesa.textContent = `R$ ${despMonth.toFixed(2)}`;
+        // CORREÇÃO: Saldo agora mostra o Total Acumulado, não apenas do mês
+        FinancePanel.elements.saldo.textContent = `R$ ${totalSaldo.toFixed(2)}`;
         
-        // Cores do saldo
-        FinancePanel.elements.saldo.style.color = (rec - desp) >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+        FinancePanel.elements.saldo.style.color = totalSaldo >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
     },
 
     renderTransactions: () => {
@@ -676,8 +675,9 @@ const FinancePanel = {
 
         sorted.forEach(([key, t]) => {
             const tr = document.createElement('tr');
-            const dateStr = new Date(t.date).toLocaleDateString('pt-BR');
-            const typeBadge = t.type === 'receita' ? '<span class="badge badge-success">Entrada</span>' : '<span class="badge badge-danger">Saída</span>';
+            // Formatar data visualmente (PT-BR)
+            const parts = t.date.split('-');
+            const dateStr = `${parts[2]}/${parts[1]}/${parts[0]}`;
             
             tr.innerHTML = `
                 <td>${dateStr}</td>
@@ -725,12 +725,10 @@ const FinancePanel = {
 
         if (category === 'Venda' && !productId) return alert("Selecione o produto vendido.");
 
-        // Lógica de Abater Estoque
         if (type === 'receita' && category === 'Venda') {
             const prod = FinancePanel.state.inventory[productId];
             if (!prod || prod.qty <= 0) return alert("Produto sem estoque.");
             
-            // Atualiza estoque
             await FinancePanel.state.db.ref(`data/${uid}/finance/inventory/${productId}`).update({
                 qty: prod.qty - 1
             });
@@ -746,7 +744,7 @@ const FinancePanel = {
         await FinancePanel.state.db.ref(`data/${uid}/finance/transactions`).push(transaction);
         alert("Lançamento salvo!");
         FinancePanel.elements.transForm.reset();
-        FinancePanel.handleTypeChange(); // Reseta visual
+        FinancePanel.handleTypeChange();
     },
 
     handleProductSubmit: async (e) => {
@@ -803,7 +801,6 @@ const AtletaPanel = {
         const workoutsRef = AtletaPanel.state.db.ref(`data/${athleteId}/workouts`);
         const query = workoutsRef.orderByChild('date');
         
-        // CORREÇÃO LISTENER
         AppPrincipal.state.listeners['atletaWorkouts'] = query;
         
         query.on('value', snapshot => {
@@ -883,7 +880,6 @@ const AtletaPanel = {
         const likesRef = AtletaPanel.state.db.ref(`workoutLikes/${workoutId}`);
         const commentsRef = AtletaPanel.state.db.ref(`workoutComments/${workoutId}`);
         
-        // CORREÇÃO LISTENER
         AppPrincipal.state.listeners[`likes_${workoutId}`] = likesRef;
         
         likesRef.on('value', snapshot => {
@@ -902,7 +898,6 @@ const AtletaPanel = {
             }
         });
         
-        // CORREÇÃO LISTENER
         AppPrincipal.state.listeners[`comments_${workoutId}`] = commentsRef;
         
         commentsRef.on('value', snapshot => commentCount.textContent = snapshot.numChildren());
@@ -927,7 +922,7 @@ const FeedPanel = {
     elements: {},
 
     init: (user, db) => {
-        console.log("FeedPanel V4.1: Inicializado.");
+        console.log("FeedPanel V4.2: Inicializado.");
         FeedPanel.state = { db, currentUser: user };
         FeedPanel.elements = { feedList: document.getElementById('feed-list') };
         FeedPanel.loadFeed();
@@ -938,10 +933,9 @@ const FeedPanel = {
         feedList.innerHTML = "<p>Carregando feed...</p>";
         const feedRef = FeedPanel.state.db.ref('publicWorkouts');
         
-        // CORREÇÃO CRÍTICA DO FEED: 
-        // 1. Alterado de 'realizadoAt' para 'date' (mostra tudo)
-        // 2. Armazena a Query para limpar depois
-        const query = feedRef.orderByChild('date').limitToLast(20);
+        // CORREÇÃO FEED: Removido orderByChild('date').
+        // Usa limitToLast(20) na chave bruta, garantindo que os últimos INSERIDOS apareçam
+        const query = feedRef.limitToLast(20);
         
         AppPrincipal.state.listeners['feedData'] = query;
         
@@ -1010,7 +1004,6 @@ const FeedPanel = {
         const likesRef = FeedPanel.state.db.ref(`workoutLikes/${workoutId}`);
         const commentsRef = FeedPanel.state.db.ref(`workoutComments/${workoutId}`);
         
-        // CORREÇÃO LISTENER
         AppPrincipal.state.listeners[`feed_likes_${workoutId}`] = likesRef;
         
         likesRef.on('value', snapshot => {
@@ -1029,7 +1022,6 @@ const FeedPanel = {
             }
         });
         
-        // CORREÇÃO LISTENER
         AppPrincipal.state.listeners[`feed_comments_${workoutId}`] = commentsRef;
         
         commentsRef.on('value', snapshot => commentCount.textContent = snapshot.numChildren());
