@@ -1,18 +1,19 @@
 /* =================================================================== */
-/* PANELS.JS V16.0 - A VERSÃO DEFINITIVA (V2 + FINANCEIRO)
+/* PANELS.JS V-FINAL - V2 RESTAURADA + FINANCEIRO INTEGRADO
+/* CONTÉM: Admin, Atleta, Feed e Financeiro (Sem Conflitos)
 /* =================================================================== */
 
 const panels = {};
 
 // ===================================================================
-// 1. ADMIN PANEL (PAINEL DO TREINADOR)
+// 1. ADMIN PANEL (PAINEL DO TREINADOR - LÓGICA V2)
 // ===================================================================
 const AdminPanel = {
     state: { selectedAthleteId: null, athletes: {} },
     elements: {},
 
     init: function(user, db) {
-        console.log("AdminPanel V16: Init");
+        console.log("AdminPanel Init");
         AdminPanel.state.db = db;
         AdminPanel.state.currentUser = user;
 
@@ -28,14 +29,14 @@ const AdminPanel = {
             iaHistoryList: document.getElementById('ia-history-list')
         };
 
-        // Listener de Busca
+        // Busca
         if (AdminPanel.elements.search) {
             AdminPanel.elements.search.oninput = function(e) {
                 AdminPanel.renderList(e.target.value);
             };
         }
         
-        // Listener do Formulário de Treino
+        // Formulário (Clonagem para remover listeners antigos)
         if (AdminPanel.elements.form) {
             const newForm = AdminPanel.elements.form.cloneNode(true);
             AdminPanel.elements.form.parentNode.replaceChild(newForm, AdminPanel.elements.form);
@@ -43,7 +44,7 @@ const AdminPanel = {
             AdminPanel.elements.form.addEventListener('submit', AdminPanel.handleAddWorkout);
         }
 
-        // Abas (Prescrever / IA)
+        // Abas
         const tabs = document.querySelectorAll('.tab-btn');
         if (tabs) {
             tabs.forEach(function(btn) {
@@ -106,13 +107,12 @@ const AdminPanel = {
         AdminPanel.loadHistory(uid);
     },
 
-    // --- CARREGAMENTO DE TREINOS (LÓGICA V2 SEGURA + MAPAS + SPLITS) ---
+    // --- CARREGAMENTO DE TREINOS (V2 COM BLINDAGEM) ---
     loadWorkouts: function(uid) {
         const div = AdminPanel.elements.workouts;
         if (!div) return;
         div.innerHTML = "<p>Carregando...</p>";
         
-        // Aumentei o limite para garantir histórico completo
         AdminPanel.state.db.ref(`data/${uid}/workouts`).orderByChild('date').limitToLast(200).on('value', function(snap) {
             div.innerHTML = "";
             if (!snap.exists()) { div.innerHTML = "<p>Nenhum treino agendado.</p>"; return; }
@@ -120,7 +120,6 @@ const AdminPanel = {
             const list = [];
             snap.forEach(function(c) { list.push({key:c.key, ...c.val()}); });
             
-            // Ordenação por data decrescente
             list.sort(function(a,b) {
                 const da = new Date(a.date || 0);
                 const db = new Date(b.date || 0);
@@ -129,6 +128,7 @@ const AdminPanel = {
 
             list.forEach(function(w) {
                 try {
+                    // Proteção de dados
                     const dateStr = w.date ? new Date(w.date).toLocaleDateString('pt-BR') : "--/--";
                     const title = w.title || "Sem Título";
                     const descRaw = w.description || "";
@@ -139,12 +139,11 @@ const AdminPanel = {
                     else if (status === 'nao_realizado') border = "5px solid #dc3545";
                     else if (status === 'realizado_parcial') border = "5px solid #ffc107";
 
-                    // CRIAÇÃO SEGURA DO DOM (V2)
                     const card = document.createElement('div');
                     card.className = 'workout-card';
                     card.style.borderLeft = border;
 
-                    // HTML Básico
+                    // HTML Base
                     let html = `
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
                             <strong style="font-size:1.1em; color:var(--primary-color);">${dateStr}</strong>
@@ -154,7 +153,7 @@ const AdminPanel = {
                         <div style="white-space:pre-wrap; font-size:0.95rem; color:#444; background:#f9f9f9; padding:8px; border-radius:4px; border:1px solid #eee;">${descRaw}</div>
                     `;
 
-                    // DADOS STRAVA (MAPA E PARCIAIS)
+                    // DADOS STRAVA (MAPA E SPLITS)
                     if (w.stravaData) {
                         let link = "";
                         if (w.stravaData.mapLink) {
@@ -177,7 +176,7 @@ const AdminPanel = {
                             </div>
                         `;
                         
-                        // TABELA DE PARCIAIS (SPLITS)
+                        // TABELA DE SPLITS
                         if (w.stravaData.splits && Array.isArray(w.stravaData.splits) && w.stravaData.splits.length > 0) {
                             let rows = "";
                             w.stravaData.splits.forEach(function(s) {
@@ -198,24 +197,43 @@ const AdminPanel = {
                             `;
                         }
                     }
-                    
-                    // Botão Excluir
+
+                    // Botões de Ação (Curtir/Comentar/Excluir)
                     html += `
-                        <div style="text-align:right; margin-top:10px; padding-top:5px; border-top:1px dashed #ddd;">
-                            <button class="btn-del btn btn-danger btn-small" style="font-size:0.8rem; padding:2px 8px;">Excluir</button>
+                        <div style="margin-top:10px; padding-top:5px; border-top:1px dashed #ddd; display:flex; justify-content:space-between; align-items:center;">
+                            <div style="display:flex; gap:15px;">
+                                <button class="btn-like" style="background:none; border:none; cursor:pointer; color:#666; font-size:0.85rem; display:flex; align-items:center; gap:3px;">
+                                    <i class='bx bx-heart'></i> Curtir
+                                </button>
+                                <button class="btn-comment" style="background:none; border:none; cursor:pointer; color:#666; font-size:0.85rem; display:flex; align-items:center; gap:3px;">
+                                    <i class='bx bx-message-rounded'></i> Comentar
+                                </button>
+                            </div>
+                            <button class="btn-del btn btn-danger btn-small" style="font-size:0.75rem; padding:2px 8px;">Excluir</button>
                         </div>
                     `;
 
                     card.innerHTML = html;
 
-                    // Listener para abrir Modal (Evita conflito com botões)
+                    // Listeners Seguros
                     card.addEventListener('click', function(e) {
                         if (!e.target.closest('button') && !e.target.closest('a') && !e.target.closest('details')) {
                             AppPrincipal.openFeedbackModal(w.key, uid, title);
                         }
                     });
 
-                    // Listener Botão Excluir
+                    const btnLike = card.querySelector('.btn-like');
+                    if(btnLike) btnLike.onclick = function(e) {
+                        e.stopPropagation();
+                        AppPrincipal.openFeedbackModal(w.key, uid, title);
+                    };
+
+                    const btnComment = card.querySelector('.btn-comment');
+                    if(btnComment) btnComment.onclick = function(e) {
+                        e.stopPropagation();
+                        AppPrincipal.openFeedbackModal(w.key, uid, title);
+                    };
+
                     const btnDel = card.querySelector('.btn-del');
                     if (btnDel) {
                         btnDel.onclick = function(ev) {
@@ -347,7 +365,7 @@ const AdminPanel = {
 };
 
 // ===================================================================
-// 2. ATLETA PANEL (COM MAPAS E SPLITS E BOTÕES SOCIAIS)
+// 2. ATLETA PANEL
 // ===================================================================
 const AtletaPanel = {
     init: function(user, db) {
@@ -355,7 +373,7 @@ const AtletaPanel = {
         if (document.getElementById('atleta-welcome-name')) document.getElementById('atleta-welcome-name').textContent = AppPrincipal.state.userData.name;
         
         const btn = document.getElementById('log-manual-activity-btn');
-        if (btn) btn.onclick = function() { document.getElementById('log-activity-modal').classList.remove('hidden'); };
+        if(btn) btn.onclick = function() { document.getElementById('log-activity-modal').classList.remove('hidden'); };
 
         if (!list) return;
 
@@ -375,29 +393,22 @@ const AtletaPanel = {
                     let extra = "";
                     if (w.stravaData) {
                         let link = "";
-                        if(w.stravaData.mapLink) link = `<a href="${w.stravaData.mapLink}" target="_blank" style="color:#fc4c02; font-weight:bold; text-decoration:none;">🗺️ Ver Mapa</a>`;
-                        else if(w.stravaActivityId) link = `<a href="https://www.strava.com/activities/${w.stravaActivityId}" target="_blank" style="color:#fc4c02; font-weight:bold; text-decoration:none;">🗺️ Ver Mapa</a>`;
+                        if(w.stravaData.mapLink) link = `<a href="${w.stravaData.mapLink}" target="_blank" style="color:#fc4c02; font-weight:bold;">🗺️ Ver Mapa</a>`;
+                        else if(w.stravaActivityId) link = `<a href="https://www.strava.com/activities/${w.stravaActivityId}" target="_blank" style="color:#fc4c02; font-weight:bold;">🗺️ Ver Mapa</a>`;
                         
                         extra = `<div style="color:#e65100; font-size:0.8rem; margin-top:5px;"><b>Strava:</b> ${w.stravaData.distancia} | ${w.stravaData.ritmo} ${link}</div>`;
                     }
 
                     const dStr = w.date ? new Date(w.date).toLocaleDateString('pt-BR') : "--";
-                    
+                    const tSafe = w.title || "Treino";
+
                     card.innerHTML = `
-                        <div style="display:flex; justify-content:space-between;">
-                            <b>${dStr}</b>
-                            <span class="status-tag ${w.status}">${w.status}</span>
-                        </div>
-                        <div style="font-weight:bold; margin:5px 0;">${w.title}</div>
-                        <div style="font-size:0.9rem; color:#666;">${(w.description||"").substring(0,100)}...</div>
-                        ${extra}
-                        <div style="text-align:right; margin-top:10px;">
-                            <button class="btn btn-primary btn-small" data-action="view">Ver / Feedback</button>
-                        </div>`;
+                        <div style="display:flex; justify-content:space-between;"><b>${dStr}</b><span class="status-tag ${w.status}">${w.status}</span></div>
+                        <div style="font-weight:bold;">${tSafe}</div><div style="font-size:0.9rem; color:#666;">${(w.description||"").substring(0,100)}...</div>${extra}
+                        <div style="text-align:right; margin-top:10px;"><button class="btn btn-primary btn-small">Ver</button></div>`;
                     
-                    // Listener Seguro
                     card.onclick = function(e) {
-                         if (!e.target.closest('a')) AppPrincipal.openFeedbackModal(w.key, user.uid, w.title);
+                         if (!e.target.closest('a')) AppPrincipal.openFeedbackModal(w.key, user.uid, tSafe);
                     };
                     list.appendChild(card);
                 } catch(e) { console.error("Erro Atleta:", e); }
@@ -407,7 +418,7 @@ const AtletaPanel = {
 };
 
 // ===================================================================
-// 3. FEED PANEL (COM MAPAS E BOTÕES)
+// 3. FEED PANEL
 // ===================================================================
 const FeedPanel = {
     init: function(user, db) {
@@ -415,7 +426,7 @@ const FeedPanel = {
         if (!list) return;
         db.ref('publicWorkouts').limitToLast(30).on('value', function(snap) {
             list.innerHTML = ""; if(!snap.exists()) return;
-            const arr=[]; snap.forEach(function(c) { arr.push({key:c.key, ...c.val()}); });
+            const arr = []; snap.forEach(function(c) { arr.push({key:c.key, ...c.val()}); });
             arr.reverse();
 
             arr.forEach(function(w) {
@@ -435,32 +446,14 @@ const FeedPanel = {
                         </div>
                         <div><b>${w.title||"Treino"}</b></div>
                         <div style="font-size:0.9rem; margin-top:5px;">${w.feedback||w.description||""}</div>
-                        
-                        <div style="margin-top:10px; border-top:1px solid #eee; padding-top:5px; display:flex; gap:15px;">
-                            <button class="action-btn btn-like" style="background:none; border:none; color:#666; cursor:pointer;"><i class='bx bx-heart'></i> Curtir</button>
-                            <button class="action-btn" style="background:none; border:none; color:#666; cursor:pointer;"><i class='bx bx-comment'></i> Comentar</button>
+                        <div style="margin-top:10px; display:flex; gap:15px; color:#666;">
+                            <span class="action-btn-feed"><i class='bx bx-heart'></i> Curtir</span>
+                            <span class="action-btn-feed"><i class='bx bx-comment'></i> Comentar</span>
                         </div>`;
                     
-                    // Listener Geral
                     card.onclick = function(e) {
-                        if (!e.target.closest('a') && !e.target.closest('button')) {
-                            AppPrincipal.openFeedbackModal(w.key, w.ownerId, w.title);
-                        }
+                        if (!e.target.closest('a')) AppPrincipal.openFeedbackModal(w.key, w.ownerId, w.title);
                     };
-
-                    // Listener Curtir (Botão Específico)
-                    const likeBtn = card.querySelector('.btn-like');
-                    if (likeBtn) {
-                        likeBtn.onclick = function(e) {
-                            e.stopPropagation();
-                            // Lógica de curtir (simplificada para o exemplo, idealmente no AppPrincipal)
-                            const likeRef = db.ref(`workoutLikes/${w.key}/${user.uid}`);
-                            likeRef.once('value', function(s) {
-                                if (s.exists()) likeRef.remove(); else likeRef.set(true);
-                            });
-                        };
-                    }
-
                     list.appendChild(card);
                 } catch(e) { console.error("Erro Feed:", e); }
             });
@@ -469,17 +462,17 @@ const FeedPanel = {
 };
 
 // ===================================================================
-// 4. FINANCE PANEL (CORRIGIDO)
+// 4. FINANCE PANEL (ADAPTADO PARA O LERUNNERS)
 // ===================================================================
 const FinancePanel = {
     state: { items: [] },
     init: function(user, db) {
-        console.log("FinancePanel V16: Init");
+        console.log("FinancePanel: Init");
         FinancePanel.state.db = db;
         FinancePanel.state.user = user;
         FinancePanel.switchTab('receber');
         
-        // Saldo (Correção do Caminho para DATA/UID)
+        // Escuta o saldo
         db.ref(`data/${user.uid}/finance`).on('value', function(s) {
             let rec=0, exp=0;
             if (s.exists()) {
@@ -490,12 +483,12 @@ const FinancePanel = {
             const elRec = document.getElementById('fin-total-recebido');
             const elExp = document.getElementById('fin-total-pago');
             const elSal = document.getElementById('fin-saldo');
-            if (elRec) elRec.textContent = `R$ ${rec.toFixed(2)}`;
-            if (elExp) elExp.textContent = `R$ ${exp.toFixed(2)}`;
-            if (elSal) elSal.textContent = `R$ ${(rec-exp).toFixed(2)}`;
+            if(elRec) elRec.textContent = `R$ ${rec.toFixed(2)}`;
+            if(elExp) elExp.textContent = `R$ ${exp.toFixed(2)}`;
+            if(elSal) elSal.textContent = `R$ ${(rec-exp).toFixed(2)}`;
         });
         
-        // Bind do Formulário
+        // Bind Manual do Formulário Financeiro
         const form = document.getElementById('finance-form');
         if (form) {
             const newForm = form.cloneNode(true);
@@ -526,7 +519,7 @@ const FinancePanel = {
         listDiv.id = "fin-list";
         div.appendChild(listDiv);
         
-        // CAMINHO CORRIGIDO: data/{uid}/finance/...
+        // Caminho do DB: data/UID/finance
         const basePath = `data/${FinancePanel.state.user.uid}/finance`;
         const refPath = tab === 'estoque' ? `${basePath}/stock` : (tab === 'receber' ? `${basePath}/receivables` : `${basePath}/expenses`);
         const ref = FinancePanel.state.db.ref(refPath);
@@ -576,7 +569,7 @@ const FinancePanel = {
     },
 
     deleteItem: function(path, key) {
-        if (confirm("Excluir?")) {
+        if (confirm("Tem certeza que deseja excluir?")) {
             FinancePanel.state.db.ref(`${path}/${key}`).remove();
         }
     },
@@ -604,7 +597,7 @@ const FinancePanel = {
             if (stockArea) {
                 stockArea.classList.remove('hidden');
                 const prodSel = document.getElementById('fin-product-select');
-                if (prodSel) prodSel.parentElement.classList.add('hidden');
+                if (prodSel) prodSel.parentElement.classList.add('hidden'); // Esconde select, mostra só input de produto se fosse novo
             }
         } else if (type === 'receber') {
             title.textContent = "Nova Receita";
@@ -615,10 +608,8 @@ const FinancePanel = {
             if (sel) {
                 sel.parentElement.classList.remove('hidden');
                 sel.innerHTML = "<option value=''>Mensalidade (Sem produto)</option>";
-                
-                // Carrega Estoque do Caminho Correto
-                const basePath = `data/${FinancePanel.state.user.uid}/finance/stock`;
-                FinancePanel.state.db.ref(basePath).once('value', function(s) {
+                const stockPath = `data/${FinancePanel.state.user.uid}/finance/stock`;
+                FinancePanel.state.db.ref(stockPath).once('value', function(s) {
                     s.forEach(function(c) {
                          const opt = document.createElement('option');
                          opt.value = c.key;
@@ -653,9 +644,8 @@ const FinancePanel = {
         const desc = document.getElementById('fin-desc').value;
         const val = parseFloat(document.getElementById('fin-value').value);
         const date = document.getElementById('fin-date').value;
-        
-        // CAMINHO CORRIGIDO: data/{uid}/finance
-        const basePath = `data/${FinancePanel.state.user.uid}/finance`;
+        const userUid = FinancePanel.state.user.uid;
+        const basePath = `data/${userUid}/finance`;
 
         if (type === 'estoque') {
             const qty = parseFloat(document.getElementById('fin-qty').value || 0);
