@@ -1,5 +1,5 @@
 /* =================================================================== */
-/* ARQUIVO DE MÓDULOS (V6.3 - FINAL STABLE: CORE DATA VISIBILITY FIX)
+/* ARQUIVO DE MÓDULOS (V6.4 - FINAL REAL: RESTORE QUERY DATE SORTING)
 /* =================================================================== */
 
 // ===================================================================
@@ -10,7 +10,7 @@ const AdminPanel = {
     elements: {},
 
     init: (user, db) => {
-        console.log("AdminPanel V6.3: Inicializado.");
+        console.log("AdminPanel V6.4: Inicializado.");
         AdminPanel.state = { db, currentUser: user, selectedAthleteId: null, athletes: {} };
 
         AdminPanel.elements = {
@@ -52,7 +52,7 @@ const AdminPanel = {
         if(AdminPanel.elements.tabKpisBtn) 
             AdminPanel.elements.tabKpisBtn.addEventListener('click', () => AdminPanel.switchTab('kpis'));
         
-        // Listener Botão IA
+        // Listener Botão IA (Com verificação de existência)
         if (AdminPanel.elements.analyzeAthleteBtnIa) {
             AdminPanel.elements.analyzeAthleteBtnIa.addEventListener('click', AdminPanel.handleAnalyzeAthleteIA);
         }
@@ -260,18 +260,17 @@ const AdminPanel = {
         });
     },
     
-    // CORREÇÃO CRÍTICA IA: 
-    // Usar limitToLast(50) puro garante que os itens apareçam pela ordem de inserção (Keys do Firebase),
-    // ignorando problemas de data mal formatada ou índices ausentes.
+    // CORREÇÃO CRÍTICA IA: Restaurada query por analysisDate (V2 style)
+    // Isso garante a exibição correta dos itens salvos pelo Coach
     loadIaHistory: (athleteId) => {
         const { iaHistoryList } = AdminPanel.elements;
         if (!iaHistoryList) return; 
         iaHistoryList.innerHTML = "<p>Carregando histórico...</p>";
         
         const historyRef = AdminPanel.state.db.ref(`iaAnalysisHistory/${athleteId}`);
-        const query = historyRef.limitToLast(50);
+        // Restaura ordenação por data para consistência
+        const query = historyRef.orderByChild('analysisDate').limitToLast(50);
         
-        // Garante a remoção do listener antigo para evitar duplicações
         if (AppPrincipal.state.listeners['adminIaHistory']) {
             if(typeof AppPrincipal.state.listeners['adminIaHistory'].off === 'function') {
                 AppPrincipal.state.listeners['adminIaHistory'].off();
@@ -300,9 +299,9 @@ const AdminPanel = {
         const { selectedAthleteId } = AdminPanel.state;
         if (!selectedAthleteId) return alert("Selecione um atleta.");
         
-        // TRAVA DE SEGURANÇA (FIX: "Nada acontece")
+        // TRAVA DE SEGURANÇA: Garante que os dados do atleta existem
         const athleteData = AdminPanel.state.athletes[selectedAthleteId];
-        if (!athleteData) return alert("Erro: Dados do atleta não carregados. Recarregue a página.");
+        if (!athleteData) return alert("Erro: Dados do atleta não carregados. Tente recarregar a página.");
         
         AppPrincipal.openIaAnalysisModal(); 
         const iaAnalysisOutput = AppPrincipal.elements.iaAnalysisOutput;
@@ -984,7 +983,7 @@ const FeedPanel = {
         
         // CORREÇÃO CRÍTICA FEED V6: "LIMITO-LAST" PURO (SEM ORDENAÇÃO DE DATA)
         // Isso garante que os últimos 50 itens INSERIDOS no banco apareçam, independente de datas.
-        const query = feedRef.limitToLast(50);
+        const query = feedRef.orderByChild('realizadoAt').limitToLast(50);
         
         AppPrincipal.state.listeners['feedData'] = query;
         
