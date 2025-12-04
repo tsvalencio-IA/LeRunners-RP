@@ -1,5 +1,5 @@
 /* =================================================================== */
-/* ARQUIVO DE MÓDULOS (V4.0 - PRESCRIÇÃO + FINANCEIRO)
+/* ARQUIVO DE MÓDULOS (V4.1 - CORREÇÃO CRÍTICA DE LÓGICA E DADOS)
 /* =================================================================== */
 
 // ===================================================================
@@ -10,7 +10,7 @@ const AdminPanel = {
     elements: {},
 
     init: (user, db) => {
-        console.log("AdminPanel V4.0: Inicializado.");
+        console.log("AdminPanel V4.1: Inicializado.");
         AdminPanel.state = { db, currentUser: user, selectedAthleteId: null, athletes: {} };
 
         AdminPanel.elements = {
@@ -21,7 +21,7 @@ const AdminPanel = {
             athleteDetailContent: document.getElementById('athlete-detail-content'),
             deleteAthleteBtn: document.getElementById('delete-athlete-btn'),
             
-            // Abas V2.6
+            // Abas
             tabPrescreverBtn: document.querySelector('[data-tab="prescrever"]'),
             tabKpisBtn: document.querySelector('[data-tab="kpis"]'),
             adminTabPrescrever: document.getElementById('admin-tab-prescrever'),
@@ -43,12 +43,10 @@ const AdminPanel = {
         
         // Listeners Abas
         AdminPanel.elements.tabPrescreverBtn.addEventListener('click', () => AdminPanel.switchTab('prescrever'));
-        AdminPanel.elements.tabKpisBtn.addEventListener('click', () => {
-            AdminPanel.switchTab('kpis');
-            if(AdminPanel.state.selectedAthleteId) {
-                AdminPanel.loadIaHistory(AdminPanel.state.selectedAthleteId);
-            }
-        });
+        
+        // CORREÇÃO KPI 1: Não recarregar histórico ao clicar na aba (evita listener duplo)
+        AdminPanel.elements.tabKpisBtn.addEventListener('click', () => AdminPanel.switchTab('kpis'));
+        
         AdminPanel.elements.analyzeAthleteBtnIa.addEventListener('click', AdminPanel.handleAnalyzeAthleteIA);
         
         // Carregar dados
@@ -70,7 +68,10 @@ const AdminPanel = {
 
     loadPendingApprovals: () => {
         const pendingRef = AdminPanel.state.db.ref('pendingApprovals');
-        AppPrincipal.state.listeners['adminPending'] = pendingRef.on('value', snapshot => {
+        // CORREÇÃO LISTENER: Guarda a REF, não o callback
+        AppPrincipal.state.listeners['adminPending'] = pendingRef;
+        
+        pendingRef.on('value', snapshot => {
             const { pendingList } = AdminPanel.elements;
             pendingList.innerHTML = "";
             if (!snapshot.exists()) {
@@ -106,7 +107,12 @@ const AdminPanel = {
 
     loadAthletes: () => {
         const athletesRef = AdminPanel.state.db.ref('users');
-        AppPrincipal.state.listeners['adminAthletes'] = athletesRef.orderByChild('name').on('value', snapshot => {
+        const query = athletesRef.orderByChild('name');
+        
+        // CORREÇÃO LISTENER
+        AppPrincipal.state.listeners['adminAthletes'] = query;
+        
+        query.on('value', snapshot => {
             AdminPanel.state.athletes = snapshot.val() || {};
             AdminPanel.renderAthleteList();
         });
@@ -195,6 +201,7 @@ const AdminPanel = {
     },
 
     selectAthlete: (uid, name) => {
+        // Limpa listeners ANTES de setar os novos
         AppPrincipal.cleanupListeners(true);
 
         if (uid === null) {
@@ -206,6 +213,8 @@ const AdminPanel = {
             AdminPanel.elements.athleteDetailName.textContent = `Atleta: ${name}`;
             AdminPanel.elements.athleteDetailContent.classList.remove('hidden');
             AdminPanel.switchTab('prescrever'); 
+            
+            // Carrega os dados APENAS AQUI (Centralizado)
             AdminPanel.loadWorkouts(uid);
             AdminPanel.loadIaHistory(uid);
         }
@@ -220,7 +229,12 @@ const AdminPanel = {
         workoutsList.innerHTML = "<p>Carregando treinos...</p>";
         
         const workoutsRef = AdminPanel.state.db.ref(`data/${athleteId}/workouts`);
-        AppPrincipal.state.listeners['adminWorkouts'] = workoutsRef.orderByChild('date').on('value', snapshot => {
+        const query = workoutsRef.orderByChild('date');
+        
+        // CORREÇÃO LISTENER
+        AppPrincipal.state.listeners['adminWorkouts'] = query;
+        
+        query.on('value', snapshot => {
             workoutsList.innerHTML = ""; 
             if (!snapshot.exists()) {
                 workoutsList.innerHTML = "<p>Nenhum treino agendado.</p>";
@@ -237,8 +251,14 @@ const AdminPanel = {
         const { iaHistoryList } = AdminPanel.elements;
         if (!iaHistoryList) return; 
         iaHistoryList.innerHTML = "<p>Carregando histórico...</p>";
+        
         const historyRef = AdminPanel.state.db.ref(`iaAnalysisHistory/${athleteId}`);
-        AppPrincipal.state.listeners['adminIaHistory'] = historyRef.orderByChild('analysisDate').limitToLast(10).on('value', snapshot => {
+        const query = historyRef.orderByChild('analysisDate').limitToLast(10);
+        
+        // CORREÇÃO LISTENER: Salva a query para limpeza correta
+        AppPrincipal.state.listeners['adminIaHistory'] = query;
+        
+        query.on('value', snapshot => {
             iaHistoryList.innerHTML = ""; 
             if (!snapshot.exists()) {
                 iaHistoryList.innerHTML = "<p>Nenhuma análise salva.</p>";
@@ -246,6 +266,7 @@ const AdminPanel = {
             }
             let items = [];
             snapshot.forEach(c => items.push({id: c.key, data: c.val()}));
+            // Inverte para o mais recente ficar em cima
             items.reverse().forEach(item => iaHistoryList.appendChild(AdminPanel.createIaHistoryCard(item.id, item.data)));
         });
     },
@@ -400,7 +421,10 @@ const AdminPanel = {
         const likesRef = AdminPanel.state.db.ref(`workoutLikes/${workoutId}`);
         const commentsRef = AdminPanel.state.db.ref(`workoutComments/${workoutId}`);
         
-        AppPrincipal.state.listeners[`likes_${workoutId}`] = likesRef.on('value', snapshot => {
+        // CORREÇÃO LISTENER
+        AppPrincipal.state.listeners[`likes_${workoutId}`] = likesRef;
+        
+        likesRef.on('value', snapshot => {
             const count = snapshot.numChildren();
             likeCount.textContent = count;
             if (snapshot.hasChild(AdminPanel.state.currentUser.uid)) likeBtn.classList.add('liked');
@@ -417,7 +441,10 @@ const AdminPanel = {
             }
         });
         
-        AppPrincipal.state.listeners[`comments_${workoutId}`] = commentsRef.on('value', snapshot => commentCount.textContent = snapshot.numChildren());
+        // CORREÇÃO LISTENER
+        AppPrincipal.state.listeners[`comments_${workoutId}`] = commentsRef;
+        
+        commentsRef.on('value', snapshot => commentCount.textContent = snapshot.numChildren());
 
         if (!isOwner) {
             likeBtn.addEventListener('click', (e) => {
@@ -470,14 +497,14 @@ const AdminPanel = {
 };
 
 // ===================================================================
-// 4. FinancePanel (NOVO MÓDULO)
+// 4. FinancePanel (NOVO MÓDULO CORRIGIDO)
 // ===================================================================
 const FinancePanel = {
     state: {},
     elements: {},
 
     init: (user, db) => {
-        console.log("FinancePanel V1.0: Inicializado.");
+        console.log("FinancePanel V1.1: Inicializado com Correções.");
         FinancePanel.state = { db, currentUser: user, inventory: {}, transactions: [] };
         
         FinancePanel.elements = {
@@ -589,7 +616,10 @@ const FinancePanel = {
         // Caminho Seguro: data/UID/finance
         const financeRef = FinancePanel.state.db.ref(`data/${uid}/finance`);
         
-        AppPrincipal.state.listeners['financeData'] = financeRef.on('value', snapshot => {
+        // CORREÇÃO LISTENER
+        AppPrincipal.state.listeners['financeData'] = financeRef;
+        
+        financeRef.on('value', snapshot => {
             const data = snapshot.val() || {};
             FinancePanel.state.transactions = data.transactions ? Object.entries(data.transactions) : [];
             FinancePanel.state.inventory = data.inventory || {};
@@ -616,12 +646,14 @@ const FinancePanel = {
 
     updateSummary: () => {
         let rec = 0, desp = 0;
-        const currentMonth = new Date().getMonth();
+        const now = new Date();
+        const currentMonth = now.getMonth();
+        const currentYear = now.getFullYear();
         
         FinancePanel.state.transactions.forEach(([key, t]) => {
             const tDate = new Date(t.date);
-            // Filtra pelo mês atual para o card, ou pode ser total
-            if (tDate.getMonth() === currentMonth) {
+            // CORREÇÃO CRÍTICA DO FINANCEIRO: Verifica MÊS e ANO
+            if (tDate.getMonth() === currentMonth && tDate.getFullYear() === currentYear) {
                 if (t.type === 'receita') rec += parseFloat(t.amount);
                 else desp += parseFloat(t.amount);
             }
@@ -769,7 +801,12 @@ const AtletaPanel = {
         workoutsList.innerHTML = "<p>Carregando seus treinos...</p>";
         
         const workoutsRef = AtletaPanel.state.db.ref(`data/${athleteId}/workouts`);
-        AppPrincipal.state.listeners['atletaWorkouts'] = workoutsRef.orderByChild('date').on('value', snapshot => {
+        const query = workoutsRef.orderByChild('date');
+        
+        // CORREÇÃO LISTENER
+        AppPrincipal.state.listeners['atletaWorkouts'] = query;
+        
+        query.on('value', snapshot => {
             workoutsList.innerHTML = ""; 
             if (!snapshot.exists()) {
                 workoutsList.innerHTML = "<p>Nenhum treino encontrado. Fale com seu coach!</p>";
@@ -846,7 +883,10 @@ const AtletaPanel = {
         const likesRef = AtletaPanel.state.db.ref(`workoutLikes/${workoutId}`);
         const commentsRef = AtletaPanel.state.db.ref(`workoutComments/${workoutId}`);
         
-        AppPrincipal.state.listeners[`likes_${workoutId}`] = likesRef.on('value', snapshot => {
+        // CORREÇÃO LISTENER
+        AppPrincipal.state.listeners[`likes_${workoutId}`] = likesRef;
+        
+        likesRef.on('value', snapshot => {
             const count = snapshot.numChildren();
             likeCount.textContent = count;
             if (snapshot.hasChild(AtletaPanel.state.currentUser.uid)) likeBtn.classList.add('liked');
@@ -862,7 +902,10 @@ const AtletaPanel = {
             }
         });
         
-        AppPrincipal.state.listeners[`comments_${workoutId}`] = commentsRef.on('value', snapshot => commentCount.textContent = snapshot.numChildren());
+        // CORREÇÃO LISTENER
+        AppPrincipal.state.listeners[`comments_${workoutId}`] = commentsRef;
+        
+        commentsRef.on('value', snapshot => commentCount.textContent = snapshot.numChildren());
 
         if (!isOwner) {
             likeBtn.addEventListener('click', (e) => {
@@ -884,7 +927,7 @@ const FeedPanel = {
     elements: {},
 
     init: (user, db) => {
-        console.log("FeedPanel V3.3: Inicializado.");
+        console.log("FeedPanel V4.1: Inicializado.");
         FeedPanel.state = { db, currentUser: user };
         FeedPanel.elements = { feedList: document.getElementById('feed-list') };
         FeedPanel.loadFeed();
@@ -894,7 +937,15 @@ const FeedPanel = {
         const { feedList } = FeedPanel.elements;
         feedList.innerHTML = "<p>Carregando feed...</p>";
         const feedRef = FeedPanel.state.db.ref('publicWorkouts');
-        AppPrincipal.state.listeners['feedData'] = feedRef.orderByChild('realizadoAt').limitToLast(20).on('value', snapshot => {
+        
+        // CORREÇÃO CRÍTICA DO FEED: 
+        // 1. Alterado de 'realizadoAt' para 'date' (mostra tudo)
+        // 2. Armazena a Query para limpar depois
+        const query = feedRef.orderByChild('date').limitToLast(20);
+        
+        AppPrincipal.state.listeners['feedData'] = query;
+        
+        query.on('value', snapshot => {
             feedList.innerHTML = "";
             if (!snapshot.exists()) {
                 feedList.innerHTML = "<p>Nenhum treino realizado pela equipe ainda.</p>";
@@ -959,7 +1010,10 @@ const FeedPanel = {
         const likesRef = FeedPanel.state.db.ref(`workoutLikes/${workoutId}`);
         const commentsRef = FeedPanel.state.db.ref(`workoutComments/${workoutId}`);
         
-        AppPrincipal.state.listeners[`feed_likes_${workoutId}`] = likesRef.on('value', snapshot => {
+        // CORREÇÃO LISTENER
+        AppPrincipal.state.listeners[`feed_likes_${workoutId}`] = likesRef;
+        
+        likesRef.on('value', snapshot => {
             const count = snapshot.numChildren();
             likeCount.textContent = count;
             if (snapshot.hasChild(FeedPanel.state.currentUser.uid)) likeBtn.classList.add('liked');
@@ -975,7 +1029,10 @@ const FeedPanel = {
             }
         });
         
-        AppPrincipal.state.listeners[`feed_comments_${workoutId}`] = commentsRef.on('value', snapshot => commentCount.textContent = snapshot.numChildren());
+        // CORREÇÃO LISTENER
+        AppPrincipal.state.listeners[`feed_comments_${workoutId}`] = commentsRef;
+        
+        commentsRef.on('value', snapshot => commentCount.textContent = snapshot.numChildren());
 
         if (!isOwner) {
             likeBtn.addEventListener('click', (e) => {
