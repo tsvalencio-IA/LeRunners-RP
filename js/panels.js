@@ -1,5 +1,5 @@
 /* =================================================================== */
-/* ARQUIVO DE MÓDULOS (V5.0 - FINAL PRO: FINANCEIRO ANUAL & FEED FULL)
+/* ARQUIVO DE MÓDULOS (V5.1 - FINAL STABLE: RESTORE FEED V2 & FIX IA)
 /* =================================================================== */
 
 // ===================================================================
@@ -10,7 +10,7 @@ const AdminPanel = {
     elements: {},
 
     init: (user, db) => {
-        console.log("AdminPanel V5.0: Inicializado.");
+        console.log("AdminPanel V5.1: Inicializado.");
         AdminPanel.state = { db, currentUser: user, selectedAthleteId: null, athletes: {} };
 
         AdminPanel.elements = {
@@ -36,10 +36,15 @@ const AdminPanel = {
             iaHistoryList: document.getElementById('ia-history-list')
         };
 
-        // Bind de eventos
-        AdminPanel.elements.addWorkoutForm.addEventListener('submit', AdminPanel.handleAddWorkout);
-        AdminPanel.elements.athleteSearch.addEventListener('input', AdminPanel.renderAthleteList);
-        AdminPanel.elements.deleteAthleteBtn.addEventListener('click', AdminPanel.deleteAthlete);
+        // Bind de eventos (Com verificações de segurança)
+        if (AdminPanel.elements.addWorkoutForm)
+            AdminPanel.elements.addWorkoutForm.addEventListener('submit', AdminPanel.handleAddWorkout);
+        
+        if (AdminPanel.elements.athleteSearch)
+            AdminPanel.elements.athleteSearch.addEventListener('input', AdminPanel.renderAthleteList);
+        
+        if (AdminPanel.elements.deleteAthleteBtn)
+            AdminPanel.elements.deleteAthleteBtn.addEventListener('click', AdminPanel.deleteAthlete);
         
         // Listeners Abas
         if(AdminPanel.elements.tabPrescreverBtn) 
@@ -47,7 +52,12 @@ const AdminPanel = {
         if(AdminPanel.elements.tabKpisBtn) 
             AdminPanel.elements.tabKpisBtn.addEventListener('click', () => AdminPanel.switchTab('kpis'));
         
-        AdminPanel.elements.analyzeAthleteBtnIa.addEventListener('click', AdminPanel.handleAnalyzeAthleteIA);
+        // CORREÇÃO CRÍTICA IA: Verificação antes do listener
+        if (AdminPanel.elements.analyzeAthleteBtnIa) {
+            AdminPanel.elements.analyzeAthleteBtnIa.addEventListener('click', AdminPanel.handleAnalyzeAthleteIA);
+        } else {
+            console.error("Botão IA não encontrado no DOM");
+        }
         
         // Carregar dados iniciais
         AdminPanel.loadPendingApprovals();
@@ -71,6 +81,8 @@ const AdminPanel = {
         
         pendingRef.on('value', snapshot => {
             const { pendingList } = AdminPanel.elements;
+            if(!pendingList) return;
+            
             pendingList.innerHTML = "";
             if (!snapshot.exists()) {
                 pendingList.innerHTML = "<p>Nenhuma solicitação pendente.</p>";
@@ -116,7 +128,9 @@ const AdminPanel = {
 
     renderAthleteList: () => {
         const { athleteList, athleteSearch } = AdminPanel.elements;
-        const searchTerm = athleteSearch.value.toLowerCase();
+        if(!athleteList) return;
+        
+        const searchTerm = athleteSearch ? athleteSearch.value.toLowerCase() : "";
         athleteList.innerHTML = "";
         
         if (AdminPanel.state.selectedAthleteId && !AdminPanel.state.athletes[AdminPanel.state.selectedAthleteId]) {
@@ -220,6 +234,7 @@ const AdminPanel = {
 
     loadWorkouts: (athleteId) => {
         const { workoutsList } = AdminPanel.elements;
+        if(!workoutsList) return;
         workoutsList.innerHTML = "<p>Carregando treinos...</p>";
         
         const workoutsRef = AdminPanel.state.db.ref(`data/${athleteId}/workouts`);
@@ -242,17 +257,16 @@ const AdminPanel = {
         });
     },
     
-    // CORREÇÃO KPI: Blindagem completa do Listener
+    // CORREÇÃO KPI: Ordenação e Limite Corretos
     loadIaHistory: (athleteId) => {
         const { iaHistoryList } = AdminPanel.elements;
         if (!iaHistoryList) return; 
         iaHistoryList.innerHTML = "<p>Carregando histórico...</p>";
         
         const historyRef = AdminPanel.state.db.ref(`iaAnalysisHistory/${athleteId}`);
-        // Limite aumentado para garantir que o usuário veja tudo
-        const query = historyRef.limitToLast(50);
+        // Restaura lógica V2: ordernar por data de análise
+        const query = historyRef.orderByChild('analysisDate').limitToLast(50);
         
-        // Remove listener anterior se existir para evitar duplicação/memória presa
         if (AppPrincipal.state.listeners['adminIaHistory']) {
             if(typeof AppPrincipal.state.listeners['adminIaHistory'].off === 'function') {
                 AppPrincipal.state.listeners['adminIaHistory'].off();
@@ -393,7 +407,6 @@ const AdminPanel = {
         return el;
     },
 
-    // RESTAURAÇÃO TOTAL: Strava + Mapa + Splits (Detalhado V2)
     createStravaDataDisplay: (stravaData) => {
         if (!stravaData) return '';
 
@@ -484,11 +497,49 @@ const AdminPanel = {
                 });
             });
         }
+    },
+
+    handleAnalyzeAthleteIA: async () => {
+        const { selectedAthleteId } = AdminPanel.state;
+        if (!selectedAthleteId) return alert("Selecione um atleta.");
+        
+        AppPrincipal.openIaAnalysisModal(); 
+        const iaAnalysisOutput = AppPrincipal.elements.iaAnalysisOutput;
+        const saveBtn = AppPrincipal.elements.saveIaAnalysisBtn;
+        
+        iaAnalysisOutput.textContent = "Coletando dados do atleta...";
+        saveBtn.classList.add('hidden'); 
+
+        try {
+            const athleteName = AdminPanel.state.athletes[selectedAthleteId].name;
+            const dataRef = AdminPanel.state.db.ref(`data/${selectedAthleteId}/workouts`);
+            const snapshot = await dataRef.orderByChild('date').limitToLast(10).once('value');
+            
+            if (!snapshot.exists()) throw new Error("Nenhum dado de treino encontrado.");
+            const workoutData = snapshot.val();
+            
+            const prompt = `ATUE COMO: Coach de Corrida. ATLETA: ${athleteName}. DADOS: ${JSON.stringify(workoutData, null, 2)}. Crie um relatório breve e direto sobre consistência e performance.`;
+            
+            iaAnalysisOutput.textContent = "Gerando análise (Gemini)...";
+            const analysisResult = await AppPrincipal.callGeminiTextAPI(prompt);
+            
+            iaAnalysisOutput.textContent = analysisResult;
+            AppPrincipal.state.currentAnalysisData = {
+                analysisDate: new Date().toISOString(),
+                coachUid: AdminPanel.state.currentUser.uid,
+                prompt: prompt,
+                analysisResult: analysisResult
+            };
+            saveBtn.classList.remove('hidden'); 
+
+        } catch (err) {
+            iaAnalysisOutput.textContent = `ERRO: ${err.message}`;
+        }
     }
 };
 
 // ===================================================================
-// 4. FinancePanel (NOVO MÓDULO CORRIGIDO V4 - ANUAL PRO)
+// 4. FinancePanel (MÓDULO FINANCEIRO - V5.0)
 // ===================================================================
 const FinancePanel = {
     state: {},
@@ -522,14 +573,20 @@ const FinancePanel = {
             inventoryList: document.getElementById('finance-inventory-list')
         };
 
-        FinancePanel.elements.tabLancamentosBtn.addEventListener('click', () => FinancePanel.switchTab('lancamentos'));
-        FinancePanel.elements.tabEstoqueBtn.addEventListener('click', () => FinancePanel.switchTab('estoque'));
+        if(FinancePanel.elements.tabLancamentosBtn)
+            FinancePanel.elements.tabLancamentosBtn.addEventListener('click', () => FinancePanel.switchTab('lancamentos'));
+        if(FinancePanel.elements.tabEstoqueBtn)
+            FinancePanel.elements.tabEstoqueBtn.addEventListener('click', () => FinancePanel.switchTab('estoque'));
         
-        FinancePanel.elements.finType.addEventListener('change', FinancePanel.handleTypeChange);
-        FinancePanel.elements.finCategory.addEventListener('change', FinancePanel.handleCategoryChange);
+        if(FinancePanel.elements.finType)
+            FinancePanel.elements.finType.addEventListener('change', FinancePanel.handleTypeChange);
+        if(FinancePanel.elements.finCategory)
+            FinancePanel.elements.finCategory.addEventListener('change', FinancePanel.handleCategoryChange);
         
-        FinancePanel.elements.transForm.addEventListener('submit', FinancePanel.handleTransactionSubmit);
-        FinancePanel.elements.prodForm.addEventListener('submit', FinancePanel.handleProductSubmit);
+        if(FinancePanel.elements.transForm)
+            FinancePanel.elements.transForm.addEventListener('submit', FinancePanel.handleTransactionSubmit);
+        if(FinancePanel.elements.prodForm)
+            FinancePanel.elements.prodForm.addEventListener('submit', FinancePanel.handleProductSubmit);
 
         FinancePanel.populateStudents();
         FinancePanel.loadData();
@@ -538,17 +595,20 @@ const FinancePanel = {
     switchTab: (tab) => {
         const { tabLancamentosBtn, tabEstoqueBtn, tabLancamentosContent, tabEstoqueContent } = FinancePanel.elements;
         const isLanc = (tab === 'lancamentos');
-        tabLancamentosBtn.classList.toggle('active', isLanc);
-        tabLancamentosContent.classList.toggle('active', isLanc);
-        tabLancamentosContent.classList.toggle('hidden', !isLanc);
         
-        tabEstoqueBtn.classList.toggle('active', !isLanc);
-        tabEstoqueContent.classList.toggle('active', !isLanc);
-        tabEstoqueContent.classList.toggle('hidden', isLanc);
+        if(tabLancamentosBtn) tabLancamentosBtn.classList.toggle('active', isLanc);
+        if(tabLancamentosContent) tabLancamentosContent.classList.toggle('active', isLanc);
+        if(tabLancamentosContent) tabLancamentosContent.classList.toggle('hidden', !isLanc);
+        
+        if(tabEstoqueBtn) tabEstoqueBtn.classList.toggle('active', !isLanc);
+        if(tabEstoqueContent) tabEstoqueContent.classList.toggle('active', !isLanc);
+        if(tabEstoqueContent) tabEstoqueContent.classList.toggle('hidden', isLanc);
     },
 
     populateStudents: () => {
         const { finStudentSelect } = FinancePanel.elements;
+        if(!finStudentSelect) return;
+        
         finStudentSelect.innerHTML = '<option value="">Selecione o Aluno...</option>';
         Object.entries(AppPrincipal.state.userCache).forEach(([uid, data]) => {
             const opt = document.createElement('option');
@@ -578,6 +638,7 @@ const FinancePanel = {
         const cat = FinancePanel.elements.finCategory.value;
         const type = FinancePanel.elements.finType.value;
         const { finStudentSelector, finProductSelector } = FinancePanel.elements;
+        if(!finStudentSelector || !finProductSelector) return;
         
         if (type === 'receita' && cat === 'Mensalidade') {
             finStudentSelector.classList.remove('hidden');
@@ -611,6 +672,8 @@ const FinancePanel = {
 
     populateProductSelect: () => {
         const { finProductSelect } = FinancePanel.elements;
+        if(!finProductSelect) return;
+        
         finProductSelect.innerHTML = '<option value="">Selecione o Produto...</option>';
         Object.entries(FinancePanel.state.inventory).forEach(([key, prod]) => {
             if (prod.qty > 0) {
@@ -622,10 +685,9 @@ const FinancePanel = {
         });
     },
 
-    // CORREÇÃO CRÍTICA FINANCEIRO: Visão Anual Profissional
     updateSummary: () => {
         let recYear = 0, despYear = 0;
-        let totalSaldo = 0; // Saldo Vitalício (Sempre Acumulado)
+        let totalSaldo = 0;
         
         const now = new Date();
         const currentYear = now.getFullYear();
@@ -633,35 +695,34 @@ const FinancePanel = {
         FinancePanel.state.transactions.forEach(([key, t]) => {
             const val = parseFloat(t.amount);
             const tDate = new Date(t.date); 
-            // Corrige fuso horário simples
+            // Fix timezone offset
             const parts = t.date.split('-');
             const safeDate = new Date(parts[0], parts[1]-1, parts[2]); 
             
-            // Saldo Vitalício: Soma TUDO
             if (t.type === 'receita') totalSaldo += val;
             else totalSaldo -= val;
 
-            // Cards de Rec/Desp: Soma apenas ANO ATUAL (Visão de Exercício Fiscal)
             if (safeDate.getFullYear() === currentYear) {
                 if (t.type === 'receita') recYear += val;
                 else despYear += val;
             }
         });
 
-        // Altera Labels para indicar que é ANUAL
         const cards = document.querySelectorAll('.finance-card h3');
         if(cards[0]) cards[0].textContent = `Receitas (${currentYear})`;
         if(cards[1]) cards[1].textContent = `Despesas (${currentYear})`;
 
-        FinancePanel.elements.totalReceita.textContent = `R$ ${recYear.toFixed(2)}`;
-        FinancePanel.elements.totalDespesa.textContent = `R$ ${despYear.toFixed(2)}`;
-        FinancePanel.elements.saldo.textContent = `R$ ${totalSaldo.toFixed(2)}`;
-        
-        FinancePanel.elements.saldo.style.color = totalSaldo >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+        if(FinancePanel.elements.totalReceita) FinancePanel.elements.totalReceita.textContent = `R$ ${recYear.toFixed(2)}`;
+        if(FinancePanel.elements.totalDespesa) FinancePanel.elements.totalDespesa.textContent = `R$ ${despYear.toFixed(2)}`;
+        if(FinancePanel.elements.saldo) {
+            FinancePanel.elements.saldo.textContent = `R$ ${totalSaldo.toFixed(2)}`;
+            FinancePanel.elements.saldo.style.color = totalSaldo >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+        }
     },
 
     renderTransactions: () => {
         const list = FinancePanel.elements.transactionsList;
+        if(!list) return;
         list.innerHTML = "";
         
         const sorted = [...FinancePanel.state.transactions].sort((a,b) => new Date(b[1].date) - new Date(a[1].date));
@@ -687,6 +748,7 @@ const FinancePanel = {
 
     renderInventory: () => {
         const list = FinancePanel.elements.inventoryList;
+        if(!list) return;
         list.innerHTML = "";
         
         Object.entries(FinancePanel.state.inventory).forEach(([key, prod]) => {
@@ -781,12 +843,16 @@ const AtletaPanel = {
             workoutsList: document.getElementById('atleta-workouts-list'),
             logManualActivityBtn: document.getElementById('log-manual-activity-btn')
         };
-        AtletaPanel.elements.logManualActivityBtn.addEventListener('click', AppPrincipal.openLogActivityModal);
+        
+        if(AtletaPanel.elements.logManualActivityBtn)
+            AtletaPanel.elements.logManualActivityBtn.addEventListener('click', AppPrincipal.openLogActivityModal);
+        
         AtletaPanel.loadWorkouts(user.uid);
     },
 
     loadWorkouts: (athleteId) => {
         const { workoutsList } = AtletaPanel.elements;
+        if(!workoutsList) return;
         workoutsList.innerHTML = "<p>Carregando seus treinos...</p>";
         
         const workoutsRef = AtletaPanel.state.db.ref(`data/${athleteId}/workouts`);
@@ -947,7 +1013,7 @@ const FeedPanel = {
     elements: {},
 
     init: (user, db) => {
-        console.log("FeedPanel V4.5: Inicializado.");
+        console.log("FeedPanel V5.1: Inicializado com Correção V2.");
         FeedPanel.state = { db, currentUser: user };
         FeedPanel.elements = { feedList: document.getElementById('feed-list') };
         FeedPanel.loadFeed();
@@ -955,12 +1021,14 @@ const FeedPanel = {
 
     loadFeed: () => {
         const { feedList } = FeedPanel.elements;
+        if(!feedList) return;
         feedList.innerHTML = "<p>Carregando feed...</p>";
         const feedRef = FeedPanel.state.db.ref('publicWorkouts');
         
-        // CORREÇÃO FEED FULL: Aumentado para 100 itens.
-        // O limite não era o problema, mas sim a ausência de um fallback robusto.
-        const query = feedRef.limitToLast(100);
+        // CORREÇÃO CRÍTICA FEED V2 RESTORED: 
+        // Voltamos a usar 'realizadoAt' porque é assim que a V2 funcionava e os dados estão estruturados.
+        // Aumentei o limite para 50 para garantir que tudo apareça.
+        const query = feedRef.orderByChild('realizadoAt').limitToLast(50);
         
         AppPrincipal.state.listeners['feedData'] = query;
         
@@ -971,16 +1039,20 @@ const FeedPanel = {
                 return;
             }
             let feedItems = [];
-            snapshot.forEach(c => feedItems.push({ id: c.key, data: c.val() }));
+            snapshot.forEach(childSnapshot => {
+                feedItems.push({
+                    id: childSnapshot.key,
+                    data: childSnapshot.val()
+                });
+            });
             
             // Inverte para mostrar o mais recente em cima
             feedItems.reverse().forEach(item => {
-                // BLINDAGEM: Se um card falhar, não trava a lista inteira
                 try {
                     const card = FeedPanel.createFeedCard(item.id, item.data, item.data.ownerId);
                     feedList.appendChild(card);
                 } catch (err) {
-                    console.error("Erro ao renderizar item do feed:", item.id, err);
+                    console.error("Erro no card do feed:", item.id, err);
                 }
             });
         });
