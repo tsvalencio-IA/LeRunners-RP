@@ -32,6 +32,7 @@
                 <button id="nav-feed-btn" class="btn btn-nav">
                     <i class='bx bx-news'></i> <span>Feed</span>
                 </button>
+                
                 <button id="nav-finance-btn" class="btn btn-nav hidden">
                     <i class='bx bx-dollar-circle'></i> <span>Financeiro</span>
                 </button>
@@ -59,6 +60,21 @@
         <div class="admin-dashboard">
             <h2><i class="bx bx-shield-quarter"></i> Painel do Treinador</h2>
             
+            <div class="actions-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 10px; margin-bottom: 20px;">
+                <div class="action-card" onclick="document.getElementById('athlete-search').focus()" style="background:white; padding:15px; text-align:center; border-radius:8px; border:1px solid #eee; cursor:pointer;">
+                    <i class='bx bxs-group' style="font-size:2rem; color:#00008B;"></i><br><span style="font-size:0.8rem; font-weight:bold;">Alunos</span>
+                </div>
+                <div class="action-card" onclick="AppPrincipal.navigateTo('finance')" style="background:white; padding:15px; text-align:center; border-radius:8px; border:1px solid #eee; cursor:pointer;">
+                    <i class='bx bxs-wallet' style="font-size:2rem; color:#28a745;"></i><br><span style="font-size:0.8rem; font-weight:bold;">Financeiro</span>
+                </div>
+                <div class="action-card" onclick="alert('Em desenvolvimento: Avaliações')" style="background:white; padding:15px; text-align:center; border-radius:8px; border:1px solid #eee; cursor:pointer;">
+                    <i class='bx bxs-bar-chart-alt-2' style="font-size:2rem; color:#ffc107;"></i><br><span style="font-size:0.8rem; font-weight:bold;">Avaliações</span>
+                </div>
+                <div class="action-card" onclick="AppPrincipal.navigateTo('feed')" style="background:white; padding:15px; text-align:center; border-radius:8px; border:1px solid #eee; cursor:pointer;">
+                    <i class='bx bxs-news' style="font-size:2rem; color:#fc4c02;"></i><br><span style="font-size:0.8rem; font-weight:bold;">Feed</span>
+                </div>
+            </div>
+
             <div class="panel approval-panel">
                 <h3><i class='bx bx-user-check'></i> Aprovações Pendentes</h3>
                 <div id="pending-list">Carregando...</div>
@@ -333,7 +349,7 @@
                     <input type="hidden" id="fin-type">
                     <div class="form-group">
                         <label>Descrição / Nome</label>
-                        <input type="text" id="fin-desc" required placeholder="Descrição ou Nome do Produto">
+                        <input type="text" id="fin-desc" required placeholder="Ex: Mensalidade Março">
                     </div>
                     
                     <div class="form-grid-2col" id="fin-value-date-group">
@@ -353,7 +369,7 @@
                     </div>
                     
                     <fieldset id="fin-stock-area" class="hidden">
-                        <legend>Estoque</legend>
+                        <legend>Movimentação de Estoque</legend>
                         <div class="form-group">
                             <label>Produto</label>
                             <select id="fin-product-select"><option value="">Selecione...</option></select>
