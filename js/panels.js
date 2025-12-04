@@ -1,5 +1,5 @@
 /* =================================================================== */
-/* ARQUIVO DE MÓDULOS (V6.4 - FINAL REAL: RESTORE QUERY DATE SORTING)
+/* ARQUIVO DE MÓDULOS (V7.0 - FINAL: RESTAURAÇÃO FIEL DA LÓGICA V2)
 /* =================================================================== */
 
 // ===================================================================
@@ -10,7 +10,7 @@ const AdminPanel = {
     elements: {},
 
     init: (user, db) => {
-        console.log("AdminPanel V6.4: Inicializado.");
+        console.log("AdminPanel V7.0: Inicializado.");
         AdminPanel.state = { db, currentUser: user, selectedAthleteId: null, athletes: {} };
 
         AdminPanel.elements = {
@@ -36,7 +36,7 @@ const AdminPanel = {
             iaHistoryList: document.getElementById('ia-history-list')
         };
 
-        // Bind de eventos
+        // Bind de eventos (Com verificações básicas)
         if (AdminPanel.elements.addWorkoutForm)
             AdminPanel.elements.addWorkoutForm.addEventListener('submit', AdminPanel.handleAddWorkout);
         
@@ -46,13 +46,22 @@ const AdminPanel = {
         if (AdminPanel.elements.deleteAthleteBtn)
             AdminPanel.elements.deleteAthleteBtn.addEventListener('click', AdminPanel.deleteAthlete);
         
-        // Listeners Abas
-        if(AdminPanel.elements.tabPrescreverBtn) 
+        // Listeners Abas - Lógica Original V2 Restaurada
+        if(AdminPanel.elements.tabPrescreverBtn) {
             AdminPanel.elements.tabPrescreverBtn.addEventListener('click', () => AdminPanel.switchTab('prescrever'));
-        if(AdminPanel.elements.tabKpisBtn) 
-            AdminPanel.elements.tabKpisBtn.addEventListener('click', () => AdminPanel.switchTab('kpis'));
+        }
         
-        // Listener Botão IA (Com verificação de existência)
+        if(AdminPanel.elements.tabKpisBtn) {
+            AdminPanel.elements.tabKpisBtn.addEventListener('click', () => {
+                AdminPanel.switchTab('kpis');
+                // Força recarregamento ao clicar na aba (igual ao original)
+                if(AdminPanel.state.selectedAthleteId) {
+                    AdminPanel.loadIaHistory(AdminPanel.state.selectedAthleteId);
+                }
+            });
+        }
+        
+        // Listener Botão IA
         if (AdminPanel.elements.analyzeAthleteBtnIa) {
             AdminPanel.elements.analyzeAthleteBtnIa.addEventListener('click', AdminPanel.handleAnalyzeAthleteIA);
         }
@@ -71,11 +80,6 @@ const AdminPanel = {
         
         if(tabKpisBtn) tabKpisBtn.classList.toggle('active', !isPrescrever);
         if(adminTabKpis) adminTabKpis.classList.toggle('active', !isPrescrever);
-        
-        // Recarrega lista ao entrar na aba KPIs para garantir atualização
-        if (!isPrescrever && AdminPanel.state.selectedAthleteId) {
-            AdminPanel.loadIaHistory(AdminPanel.state.selectedAthleteId);
-        }
     },
 
     loadPendingApprovals: () => {
@@ -227,6 +231,7 @@ const AdminPanel = {
             AdminPanel.switchTab('prescrever'); 
             
             AdminPanel.loadWorkouts(uid);
+            // IMPORTANTE: Carrega histórico também ao selecionar (igual V2)
             AdminPanel.loadIaHistory(uid);
         }
         
@@ -260,17 +265,18 @@ const AdminPanel = {
         });
     },
     
-    // CORREÇÃO CRÍTICA IA: Restaurada query por analysisDate (V2 style)
-    // Isso garante a exibição correta dos itens salvos pelo Coach
+    // RESTAURAÇÃO CRÍTICA (V2 Pura): Query com orderByChild('analysisDate')
     loadIaHistory: (athleteId) => {
         const { iaHistoryList } = AdminPanel.elements;
         if (!iaHistoryList) return; 
+        
         iaHistoryList.innerHTML = "<p>Carregando histórico...</p>";
         
         const historyRef = AdminPanel.state.db.ref(`iaAnalysisHistory/${athleteId}`);
-        // Restaura ordenação por data para consistência
+        // Restaura a lógica que funcionava no seu ZIP
         const query = historyRef.orderByChild('analysisDate').limitToLast(50);
         
+        // Remove listener anterior se existir
         if (AppPrincipal.state.listeners['adminIaHistory']) {
             if(typeof AppPrincipal.state.listeners['adminIaHistory'].off === 'function') {
                 AppPrincipal.state.listeners['adminIaHistory'].off();
@@ -284,10 +290,16 @@ const AdminPanel = {
                 iaHistoryList.innerHTML = "<p>Nenhuma análise salva.</p>";
                 return;
             }
-            let items = [];
-            snapshot.forEach(c => items.push({id: c.key, data: c.val()}));
             
-            // Inverte para o mais recente ficar no topo
+            let items = [];
+            snapshot.forEach(childSnapshot => {
+                items.push({
+                    id: childSnapshot.key,
+                    data: childSnapshot.val()
+                });
+            });
+            
+            // Inverte para exibir o mais recente no topo
             items.reverse().forEach(item => {
                 const card = AdminPanel.createIaHistoryCard(item.id, item.data);
                 iaHistoryList.appendChild(card);
@@ -295,13 +307,22 @@ const AdminPanel = {
         });
     },
 
+    // CORREÇÃO CRÍTICA: Fallback de Nome para o Botão funcionar sempre
     handleAnalyzeAthleteIA: async () => {
         const { selectedAthleteId } = AdminPanel.state;
         if (!selectedAthleteId) return alert("Selecione um atleta.");
         
-        // TRAVA DE SEGURANÇA: Garante que os dados do atleta existem
-        const athleteData = AdminPanel.state.athletes[selectedAthleteId];
-        if (!athleteData) return alert("Erro: Dados do atleta não carregados. Tente recarregar a página.");
+        // Tenta pegar o nome do state local ou do cache global (Fallback robusto)
+        let athleteName = "Atleta";
+        if (AdminPanel.state.athletes && AdminPanel.state.athletes[selectedAthleteId]) {
+            athleteName = AdminPanel.state.athletes[selectedAthleteId].name;
+        } else if (AppPrincipal.state.userCache && AppPrincipal.state.userCache[selectedAthleteId]) {
+            athleteName = AppPrincipal.state.userCache[selectedAthleteId].name;
+        } else {
+            // Último recurso: pega do DOM
+            const domName = document.getElementById('athlete-detail-name').textContent;
+            if(domName) athleteName = domName.replace("Atleta: ", "");
+        }
         
         AppPrincipal.openIaAnalysisModal(); 
         const iaAnalysisOutput = AppPrincipal.elements.iaAnalysisOutput;
@@ -311,7 +332,6 @@ const AdminPanel = {
         saveBtn.classList.add('hidden'); 
 
         try {
-            const athleteName = athleteData.name;
             const dataRef = AdminPanel.state.db.ref(`data/${selectedAthleteId}/workouts`);
             const snapshot = await dataRef.orderByChild('date').limitToLast(10).once('value');
             
@@ -492,6 +512,66 @@ const AdminPanel = {
                 });
             });
         }
+    },
+
+    handleAddWorkout: (e) => {
+        e.preventDefault();
+        const { selectedAthleteId } = AdminPanel.state;
+        const { addWorkoutForm } = AdminPanel.elements;
+        
+        if (!selectedAthleteId) return alert("Selecione um atleta.");
+
+        const date = addWorkoutForm.querySelector('#workout-date').value;
+        const title = addWorkoutForm.querySelector('#workout-title').value;
+        
+        if (!date || !title) return alert("Data e Título são obrigatórios.");
+
+        const modalidade = addWorkoutForm.querySelector('#workout-modalidade').value;
+        const tipoTreino = addWorkoutForm.querySelector('#workout-tipo-treino').value;
+        const intensidade = addWorkoutForm.querySelector('#workout-intensidade').value;
+        const percurso = addWorkoutForm.querySelector('#workout-percurso').value;
+        
+        const distancia = addWorkoutForm.querySelector('#workout-distancia').value.trim();
+        const tempo = addWorkoutForm.querySelector('#workout-tempo').value.trim();
+        const pace = addWorkoutForm.querySelector('#workout-pace').value.trim();
+        const velocidade = addWorkoutForm.querySelector('#workout-velocidade').value.trim();
+        const observacoes = addWorkoutForm.querySelector('#workout-observacoes').value.trim();
+
+        let description = `[${modalidade}] - [${tipoTreino}]\n`;
+        description += `Intensidade: ${intensidade}\n`;
+        description += `Percurso: ${percurso}\n`;
+        description += `--- \n`;
+        if (distancia) description += `Distância: ${distancia}\n`;
+        if (tempo) description += `Tempo: ${tempo}\n`;
+        if (pace) description += `Pace: ${pace}\n`;
+        if (velocidade) description += `Velocidade: ${velocidade}\n`;
+        if (observacoes) description += `--- \nObservações:\n${observacoes}`;
+
+        const workoutData = {
+            date: date,
+            title: title,
+            description: description,
+            structure: {
+                modalidade, tipoTreino, intensidade, percurso, distancia, tempo, pace, velocidade
+            },
+            createdBy: AdminPanel.state.currentUser.uid,
+            createdAt: new Date().toISOString(),
+            status: "planejado",
+            feedback: "",
+            imageUrl: null,
+            stravaData: null
+        };
+
+        AdminPanel.state.db.ref(`data/${selectedAthleteId}/workouts`).push(workoutData)
+            .then(() => {
+                addWorkoutForm.querySelector('#workout-distancia').value = "";
+                addWorkoutForm.querySelector('#workout-tempo').value = "";
+                addWorkoutForm.querySelector('#workout-pace').value = "";
+                addWorkoutForm.querySelector('#workout-velocidade').value = "";
+                addWorkoutForm.querySelector('#workout-observacoes').value = "";
+                addWorkoutForm.querySelector('#workout-title').value = "";
+            })
+            .catch(err => alert("Falha ao salvar: " + err.message));
     }
 };
 
@@ -981,8 +1061,8 @@ const FeedPanel = {
         feedList.innerHTML = "<p>Carregando feed...</p>";
         const feedRef = FeedPanel.state.db.ref('publicWorkouts');
         
-        // CORREÇÃO CRÍTICA FEED V6: "LIMITO-LAST" PURO (SEM ORDENAÇÃO DE DATA)
-        // Isso garante que os últimos 50 itens INSERIDOS no banco apareçam, independente de datas.
+        // RESTAURAÇÃO CRÍTICA FEED V2: 
+        // Restaurada query por realizadoAt para garantir ordem cronológica
         const query = feedRef.orderByChild('realizadoAt').limitToLast(50);
         
         AppPrincipal.state.listeners['feedData'] = query;
