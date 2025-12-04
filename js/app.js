@@ -43,8 +43,11 @@ const AppPrincipal = {
         
         document.querySelectorAll('.close-btn').forEach(b => b.onclick = (e) => e.target.closest('.modal-overlay').classList.add('hidden'));
         
-        // Forms (Garante que existem antes de dar bind)
+        // Forms
         if(document.getElementById('feedback-form')) document.getElementById('feedback-form').onsubmit = AppPrincipal.handleFeedbackSubmit;
+        if(document.getElementById('comment-form')) document.getElementById('comment-form').onsubmit = AppPrincipal.handleCommentSubmit;
+        if(document.getElementById('profile-form')) document.getElementById('profile-form').onsubmit = AppPrincipal.handleProfileSubmit;
+        if(document.getElementById('log-activity-form')) document.getElementById('log-activity-form').onsubmit = AppPrincipal.handleLogActivitySubmit;
         if(document.getElementById('finance-form')) document.getElementById('finance-form').onsubmit = FinancePanel.handleSaveTransaction;
 
         const photoInput = document.getElementById('photo-upload-input');
@@ -147,7 +150,6 @@ const AppPrincipal = {
             } else if (page === 'feed') {
                 FeedPanel.init(AppPrincipal.state.currentUser, AppPrincipal.state.db);
             } else if (page === 'finance') {
-                // Chama o módulo financeiro que agora está no panels.js
                 if(window.FinancePanel) FinancePanel.init(AppPrincipal.state.currentUser, AppPrincipal.state.db);
             }
         }
@@ -157,7 +159,7 @@ const AppPrincipal = {
 
     handleLogout: () => AppPrincipal.state.auth.signOut().then(() => window.location.href = 'index.html'),
 
-    // STRAVA SYNC (CÓDIGO V2 LOOP)
+    // STRAVA DEEP SYNC (LOOP)
     handleStravaConnect: () => { window.location.href = `https://www.strava.com/oauth/authorize?client_id=${window.STRAVA_PUBLIC_CONFIG.clientID}&response_type=code&redirect_uri=${window.STRAVA_PUBLIC_CONFIG.redirectURI}&approval_prompt=force&scope=read_all,activity:read_all,profile:read_all`; },
     
     exchangeStravaCode: async (code) => {
@@ -185,6 +187,8 @@ const AppPrincipal = {
             const perPage = 30;
 
             while (keepFetching) {
+                if(statusMsg) statusMsg.textContent = `Buscando página ${page}...`;
+                
                 const response = await fetch(`https://www.strava.com/api/v3/athlete/activities?per_page=${perPage}&page=${page}`, { headers: { 'Authorization': `Bearer ${stravaTokenData.accessToken}` } });
                 if (!response.ok) break;
                 
@@ -204,7 +208,7 @@ const AppPrincipal = {
 
                     if(alreadyExists && !matchKey) continue;
 
-                    await new Promise(r => setTimeout(r, 200)); 
+                    await new Promise(r => setTimeout(r, 100)); 
                     const detailRes = await fetch(`https://www.strava.com/api/v3/activities/${act.id}`, { headers: { 'Authorization': `Bearer ${stravaTokenData.accessToken}` } });
                     const detail = await detailRes.json();
                     
@@ -267,6 +271,7 @@ const AppPrincipal = {
         finally { if(btn) { btn.disabled=false; btn.textContent="Sincronizar Strava"; } if(statusMsg) statusMsg.textContent=""; }
     },
 
+    // MODAL FEEDBACK
     openFeedbackModal: (workoutId, ownerId, title) => {
         const modal = document.getElementById('feedback-modal');
         AppPrincipal.state.modal = { isOpen: true, currentWorkoutId: workoutId, currentOwnerId: ownerId };
@@ -300,6 +305,7 @@ const AppPrincipal = {
             const list = document.getElementById('comments-list');
             if(list) {
                 list.innerHTML = "";
+                if(!s.exists()) return;
                 s.forEach(c => list.innerHTML += `<div class="comment-item"><b>${c.val().name}:</b> ${c.val().text}</div>`);
             }
         });
@@ -317,7 +323,10 @@ const AppPrincipal = {
             const fileInput = document.getElementById('photo-upload-input');
             if (fileInput && fileInput.files.length > 0) imageUrl = await AppPrincipal.uploadFileToCloudinary(fileInput.files[0], 'workouts');
 
-            const updates = { status: document.getElementById('workout-status').value, feedback: document.getElementById('workout-feedback-text').value };
+            const updates = { 
+                status: document.getElementById('workout-status').value, 
+                feedback: document.getElementById('workout-feedback-text').value
+            };
             if(imageUrl) updates.imageUrl = imageUrl;
 
             await AppPrincipal.state.db.ref(`data/${currentOwnerId}/workouts/${currentWorkoutId}`).update(updates);
@@ -365,6 +374,18 @@ const AppPrincipal = {
         } catch (err) { if(feedback) feedback.textContent = "Erro leitura IA."; }
     },
     fileToBase64: (file) => new Promise((r, j) => { const reader = new FileReader(); reader.onload = () => r(reader.result.split(',')[1]); reader.onerror = j; reader.readAsDataURL(file); }),
+    
+    // Upload de Foto de Perfil
+    handleProfilePhotoUpload: async (e) => {
+        const file = e.target.files[0];
+        if(!file) return;
+        try {
+            const url = await AppPrincipal.uploadFileToCloudinary(file, 'profile');
+            document.getElementById('profile-pic-preview').src = url;
+            // Já salva no banco para garantir
+            await AppPrincipal.state.db.ref(`users/${AppPrincipal.state.currentUser.uid}`).update({ photoUrl: url });
+        } catch(err) { alert("Erro upload: " + err.message); }
+    },
     
     openProfileModal: () => { 
         document.getElementById('profile-modal').classList.remove('hidden'); 
