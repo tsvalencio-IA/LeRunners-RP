@@ -1,5 +1,5 @@
 /* =================================================================== */
-/* APP.JS - VERSÃO 3.0 (COM FINANCEIRO)
+/* APP.JS - VERSÃO 3.0 + FINANCEIRO (EVOLUÇÃO)
 /* =================================================================== */
 
 const AppPrincipal = {
@@ -10,7 +10,7 @@ const AppPrincipal = {
         auth: null,
         listeners: {},
         currentView: 'planilha',
-        viewMode: 'admin', 
+        viewMode: 'admin', // Controla a visão (Admin vs Atleta)
         adminUIDs: {},
         userCache: {},
         modal: { isOpen: false, currentWorkoutId: null, currentOwnerId: null, newPhotoUrl: null },
@@ -82,7 +82,7 @@ const AppPrincipal = {
             navPlanilhaBtn: document.getElementById('nav-planilha-btn'),
             navFeedBtn: document.getElementById('nav-feed-btn'),
             navProfileBtn: document.getElementById('nav-profile-btn'),
-            navFinanceBtn: document.getElementById('nav-finance-btn'), // NOVO
+            navFinanceBtn: document.getElementById('nav-finance-btn'), // NOVO FINANCEIRO
             
             feedbackModal: document.getElementById('feedback-modal'),
             closeFeedbackModal: document.getElementById('close-feedback-modal'),
@@ -133,10 +133,7 @@ const AppPrincipal = {
         AppPrincipal.elements.logoutButton.addEventListener('click', AppPrincipal.handleLogout);
         AppPrincipal.elements.navPlanilhaBtn.addEventListener('click', () => AppPrincipal.navigateTo('planilha'));
         AppPrincipal.elements.navFeedBtn.addEventListener('click', () => AppPrincipal.navigateTo('feed'));
-        // NOVO: Listener Financeiro
-        if(AppPrincipal.elements.navFinanceBtn) {
-            AppPrincipal.elements.navFinanceBtn.addEventListener('click', () => AppPrincipal.navigateTo('finance'));
-        }
+        AppPrincipal.elements.navFinanceBtn.addEventListener('click', () => AppPrincipal.navigateTo('finance')); // ROTA FINANCEIRO
         
         AppPrincipal.elements.closeFeedbackModal.addEventListener('click', AppPrincipal.closeFeedbackModal);
         AppPrincipal.elements.feedbackForm.addEventListener('submit', AppPrincipal.handleFeedbackSubmit);
@@ -184,7 +181,7 @@ const AppPrincipal = {
             return;
         }
 
-        const { appContainer } = AppPrincipal.elements;
+        const { appContainer, navFinanceBtn } = AppPrincipal.elements;
         AppPrincipal.state.currentUser = user;
         const uid = user.uid;
         
@@ -196,6 +193,9 @@ const AppPrincipal = {
 
         AppPrincipal.state.db.ref('admins/' + uid).once('value', adminSnapshot => {
             if (adminSnapshot.exists() && adminSnapshot.val() === true) {
+                // É ADMIN
+                navFinanceBtn.classList.remove('hidden'); // MOSTRA BOTÃO FINANCEIRO
+
                 AppPrincipal.state.db.ref('users/' + uid).once('value', userSnapshot => {
                     let adminName;
                     if (userSnapshot.exists()) {
@@ -212,15 +212,10 @@ const AppPrincipal = {
                         AppPrincipal.state.db.ref('users/' + uid).set(adminProfile);
                         AppPrincipal.state.userData = adminProfile;
                     }
-                    AppPrincipal.state.userData.role = 'admin'; 
+                    AppPrincipal.state.userData.role = 'admin';
                     AppPrincipal.elements.userDisplay.textContent = `${adminName} (Coach)`;
                     
-                    // Mostra botão Financeiro
-                    if (AppPrincipal.elements.navFinanceBtn) {
-                        AppPrincipal.elements.navFinanceBtn.classList.remove('hidden');
-                    }
-                    
-                    // INSERÇÃO DO BOTÃO "MODO ATLETA"
+                    // --- BOTÃO "MODO ATLETA" ---
                     const nav = document.querySelector('.app-header nav');
                     if(!document.getElementById('admin-toggle')) {
                         const btn = document.createElement('button');
@@ -236,18 +231,22 @@ const AppPrincipal = {
                                 btn.innerHTML = "Modo Coach";
                                 appContainer.classList.add('atleta-view');
                                 appContainer.classList.remove('admin-view');
+                                navFinanceBtn.classList.add('hidden'); // Esconde no modo atleta
                             } else {
                                 AppPrincipal.state.viewMode = 'admin';
                                 btn.innerHTML = "Modo Atleta";
                                 appContainer.classList.add('admin-view');
                                 appContainer.classList.remove('atleta-view');
+                                navFinanceBtn.classList.remove('hidden'); // Mostra no modo admin
                             }
                             AppPrincipal.navigateTo('planilha');
                         };
                         
+                        // Insere antes do botão Sair
                         const logoutBtn = document.getElementById('logoutButton');
                         nav.insertBefore(btn, logoutBtn);
                     }
+                    // ---------------------------------------------
 
                     appContainer.classList.add('admin-view');
                     appContainer.classList.remove('atleta-view');
@@ -255,6 +254,9 @@ const AppPrincipal = {
                 });
                 return;
             }
+
+            // NÃO É ADMIN (Atleta comum)
+            navFinanceBtn.classList.add('hidden'); // GARANTE QUE ESTÁ ESCONDIDO
 
             AppPrincipal.state.db.ref('users/' + uid).once('value', userSnapshot => {
                 if (userSnapshot.exists()) {
@@ -271,7 +273,7 @@ const AppPrincipal = {
     },
 
     // ===================================================================
-    // 3. ROTEAMENTO
+    // 3. ROTEAMENTO (ATUALIZADO PARA FINANCEIRO)
     // ===================================================================
     navigateTo: (page) => {
         const { mainContent, loader, appContainer, navPlanilhaBtn, navFeedBtn, navFinanceBtn } = AppPrincipal.elements;
@@ -281,7 +283,7 @@ const AppPrincipal = {
 
         navPlanilhaBtn.classList.toggle('active', page === 'planilha');
         navFeedBtn.classList.toggle('active', page === 'feed');
-        if(navFinanceBtn) navFinanceBtn.classList.toggle('active', page === 'finance');
+        navFinanceBtn.classList.toggle('active', page === 'finance');
 
         if (typeof AdminPanel === 'undefined' || typeof AtletaPanel === 'undefined' || typeof FeedPanel === 'undefined' || typeof FinancePanel === 'undefined') {
             mainContent.innerHTML = "<h1>Erro ao carregar módulos. Recarregue a página.</h1>";
@@ -289,7 +291,6 @@ const AppPrincipal = {
         }
 
         if (page === 'planilha') {
-            // Lógica de Toggle (Admin no Modo Atleta)
             if (AppPrincipal.state.userData.role === 'admin' && AppPrincipal.state.viewMode === 'admin') {
                 const adminTemplate = document.getElementById('admin-panel-template').content.cloneNode(true);
                 mainContent.appendChild(adminTemplate);
@@ -310,13 +311,15 @@ const AppPrincipal = {
             FeedPanel.init(AppPrincipal.state.currentUser, AppPrincipal.state.db);
         }
         else if (page === 'finance') {
-            // Apenas Admin pode ver
-            if (AppPrincipal.state.userData.role !== 'admin') {
-                return AppPrincipal.navigateTo('planilha');
+            // ROTA FINANCEIRO (Somente Admin)
+            if (AppPrincipal.state.userData.role === 'admin') {
+                const financeTemplate = document.getElementById('finance-panel-template').content.cloneNode(true);
+                mainContent.appendChild(financeTemplate);
+                FinancePanel.init(AppPrincipal.state.currentUser, AppPrincipal.state.db);
+            } else {
+                alert("Acesso negado.");
+                AppPrincipal.navigateTo('planilha');
             }
-            const financeTemplate = document.getElementById('finance-panel-template').content.cloneNode(true);
-            mainContent.appendChild(financeTemplate);
-            FinancePanel.init(AppPrincipal.state.currentUser, AppPrincipal.state.db);
         }
 
         loader.classList.add('hidden');
@@ -498,7 +501,7 @@ const AppPrincipal = {
         }
     },
 
-    // --- STRAVA SYNC ---
+    // --- STRAVA SYNC (V2 Pura) ---
     handleStravaSyncActivities: async () => {
         const { stravaTokenData, currentUser } = AppPrincipal.state;
         const btn = document.getElementById('btn-sync-strava');
@@ -557,10 +560,7 @@ const AppPrincipal = {
                         stravaData: {
                             distancia: distKm,
                             tempo: new Date(act.moving_time * 1000).toISOString().substr(11, 8),
-                            ritmo: ritmoStr,
-                            mapLink: act.map && act.map.summary_polyline 
-                                ? `https://www.strava.com/activities/${act.id}` 
-                                : null
+                            ritmo: ritmoStr
                         }
                     };
 
@@ -616,15 +616,10 @@ const AppPrincipal = {
                 const data = snapshot.val();
                 workoutStatusSelect.value = data.status || 'planejado';
                 workoutFeedbackText.value = data.feedback || '';
-                
+                // Exibe Strava simples se existir
                 if (data.stravaData && stravaDataDisplay) {
                     stravaDataDisplay.classList.remove('hidden');
-                    let html = `<legend>Strava</legend><p>${data.stravaData.distancia} | ${data.stravaData.ritmo}</p>`;
-                    // Garante que o link do mapa apareça se existir
-                    if(data.stravaData.mapLink) {
-                         html += `<p><a href="${data.stravaData.mapLink}" target="_blank">Ver Mapa</a></p>`;
-                    }
-                    stravaDataDisplay.innerHTML = html;
+                    stravaDataDisplay.innerHTML = `<legend>Strava</legend><p>${data.stravaData.distancia} | ${data.stravaData.ritmo}</p>`;
                 }
             }
         });
@@ -711,7 +706,6 @@ const AppPrincipal = {
         AppPrincipal.elements.commentInput.value = "";
     },
 
-    // Funções extras
     openLogActivityModal: () => {
         AppPrincipal.elements.logActivityForm.reset();
         AppPrincipal.elements.logActivityModal.classList.remove('hidden');
@@ -834,7 +828,7 @@ const AppPrincipal = {
 };
 
 // ===================================================================
-// 2. AuthLogic
+// 2. AuthLogic (Lógica da index.html)
 // ===================================================================
 const AuthLogic = {
     auth: null, db: null, elements: {},
