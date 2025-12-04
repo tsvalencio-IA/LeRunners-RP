@@ -1,17 +1,16 @@
 /* =================================================================== */
-/* ARQUIVO DE MÓDULOS (V3.5 - PRESCRIÇÃO ESTRUTURADA + FINANCEIRO)
-/* ARQUITETURA: Refatorada (app.js + panels.js)
+/* ARQUIVO DE MÓDULOS (V4.0 - PRESCRIÇÃO + FINANCEIRO)
 /* =================================================================== */
 
 // ===================================================================
-// 3. AdminPanel (Lógica do Painel Coach V3.5)
+// 3. AdminPanel (Lógica do Painel Coach)
 // ===================================================================
 const AdminPanel = {
     state: {},
     elements: {},
 
     init: (user, db) => {
-        console.log("AdminPanel V3.5: Inicializado.");
+        console.log("AdminPanel V4.0: Inicializado.");
         AdminPanel.state = { db, currentUser: user, selectedAthleteId: null, athletes: {} };
 
         AdminPanel.elements = {
@@ -38,26 +37,25 @@ const AdminPanel = {
         };
 
         // Bind de eventos
-        if(AdminPanel.elements.addWorkoutForm) AdminPanel.elements.addWorkoutForm.addEventListener('submit', AdminPanel.handleAddWorkout);
-        if(AdminPanel.elements.athleteSearch) AdminPanel.elements.athleteSearch.addEventListener('input', AdminPanel.renderAthleteList);
-        if(AdminPanel.elements.deleteAthleteBtn) AdminPanel.elements.deleteAthleteBtn.addEventListener('click', AdminPanel.deleteAthlete);
+        AdminPanel.elements.addWorkoutForm.addEventListener('submit', AdminPanel.handleAddWorkout);
+        AdminPanel.elements.athleteSearch.addEventListener('input', AdminPanel.renderAthleteList);
+        AdminPanel.elements.deleteAthleteBtn.addEventListener('click', AdminPanel.deleteAthlete);
         
-        // Listeners Abas V2.6
-        if(AdminPanel.elements.tabPrescreverBtn) AdminPanel.elements.tabPrescreverBtn.addEventListener('click', () => AdminPanel.switchTab('prescrever'));
-        if(AdminPanel.elements.tabKpisBtn) AdminPanel.elements.tabKpisBtn.addEventListener('click', () => {
+        // Listeners Abas
+        AdminPanel.elements.tabPrescreverBtn.addEventListener('click', () => AdminPanel.switchTab('prescrever'));
+        AdminPanel.elements.tabKpisBtn.addEventListener('click', () => {
             AdminPanel.switchTab('kpis');
             if(AdminPanel.state.selectedAthleteId) {
                 AdminPanel.loadIaHistory(AdminPanel.state.selectedAthleteId);
             }
         });
-        if(AdminPanel.elements.analyzeAthleteBtnIa) AdminPanel.elements.analyzeAthleteBtnIa.addEventListener('click', AdminPanel.handleAnalyzeAthleteIA);
+        AdminPanel.elements.analyzeAthleteBtnIa.addEventListener('click', AdminPanel.handleAnalyzeAthleteIA);
         
         // Carregar dados
         AdminPanel.loadPendingApprovals();
         AdminPanel.loadAthletes();
     },
 
-    // Controle das Abas (V2.6)
     switchTab: (tabName) => {
         const { tabPrescreverBtn, tabKpisBtn, adminTabPrescrever, adminTabKpis } = AdminPanel.elements;
         
@@ -143,59 +141,44 @@ const AdminPanel = {
     },
 
     approveAthlete: (uid) => {
-        console.log("Aprovando:", uid);
         const pendingRef = AdminPanel.state.db.ref('pendingApprovals/' + uid);
-        
         pendingRef.once('value', snapshot => {
-            if (!snapshot.exists()) return console.error("Usuário pendente não encontrado.");
-            
+            if (!snapshot.exists()) return;
             const pendingData = snapshot.val();
-            
             const newUserProfile = { 
                 name: pendingData.name, 
                 email: pendingData.email, 
                 role: "atleta", 
                 createdAt: new Date().toISOString(),
-                bio: "", // (V3.0)
-                photoUrl: "" // (V3.0)
+                bio: "", photoUrl: ""
             };
-            
             const updates = {};
             updates[`/users/${uid}`] = newUserProfile;
             updates[`/data/${uid}`] = { workouts: {} };     
-            updates[`/iaAnalysisHistory/${uid}`] = {}; // V2.6
+            updates[`/iaAnalysisHistory/${uid}`] = {}; 
             updates[`/pendingApprovals/${uid}`] = null; 
 
             AdminPanel.state.db.ref().update(updates)
-                .then(() => console.log("Atleta aprovado e movido com sucesso."))
-                .catch(err => {
-                    console.error("ERRO CRÍTICO AO APROVAR:", err);
-                    alert("Falha ao aprovar o atleta. Verifique as Regras de Segurança. Detalhe: " + err.message);
-                });
+                .catch(err => alert("Falha ao aprovar: " + err.message));
         });
     },
 
     rejectAthlete: (uid) => {
-        if (!confirm("Tem certeza que deseja REJEITAR este atleta?")) return;
+        if (!confirm("Tem certeza que deseja REJEITAR?")) return;
         AdminPanel.state.db.ref('pendingApprovals/' + uid).remove()
-            .then(() => console.log("Solicitação rejeitada."))
             .catch(err => alert("Falha ao rejeitar: " + err.message));
     },
 
-    // (V3.0 - Correção Bug 1)
     deleteAthlete: () => {
         const { selectedAthleteId } = AdminPanel.state;
         if (!selectedAthleteId) return;
-        
         const athleteName = AdminPanel.state.athletes[selectedAthleteId].name;
-        if (!confirm(`ATENÇÃO: Isso irá apagar PERMANENTEMENTE o atleta "${athleteName}" e todos os seus dados (treinos, comentários, IA, etc.).\n\nIsso NÃO pode ser desfeito.\n\nTem certeza?`)) {
-            return;
-        }
+        if (!confirm(`ATENÇÃO: Apagar PERMANENTEMENTE o atleta "${athleteName}"?`)) return;
 
         const updates = {};
         updates[`/users/${selectedAthleteId}`] = null;
         updates[`/data/${selectedAthleteId}`] = null;
-        updates[`/iaAnalysisHistory/${selectedAthleteId}`] = null; // V2.6
+        updates[`/iaAnalysisHistory/${selectedAthleteId}`] = null; 
         
         const feedRef = AdminPanel.state.db.ref('publicWorkouts');
         feedRef.orderByChild('ownerId').equalTo(selectedAthleteId).once('value', snapshot => {
@@ -205,34 +188,26 @@ const AdminPanel = {
                 updates[`/workoutComments/${workoutId}`] = null;
                 updates[`/workoutLikes/${workoutId}`] = null;
             });
-            
             AdminPanel.state.db.ref().update(updates)
-                .then(() => {
-                    console.log("Atleta e seus dados públicos foram excluídos.");
-                    AdminPanel.selectAthlete(null, null); // Desseleciona
-                })
-                .catch(err => alert("Erro ao excluir atleta: " + err.message));
+                .then(() => AdminPanel.selectAthlete(null, null))
+                .catch(err => alert("Erro ao excluir: " + err.message));
         });
     },
 
-    // (V3.0 - Correção Bug 2)
     selectAthlete: (uid, name) => {
-        // Limpa TODOS os listeners do painel anterior (Bug 2)
         AppPrincipal.cleanupListeners(true);
 
         if (uid === null) {
-            // Desselecionando
             AdminPanel.state.selectedAthleteId = null;
             AdminPanel.elements.athleteDetailName.textContent = "Selecione um Atleta";
             AdminPanel.elements.athleteDetailContent.classList.add('hidden');
         } else {
-            // Selecionando
             AdminPanel.state.selectedAthleteId = uid;
             AdminPanel.elements.athleteDetailName.textContent = `Atleta: ${name}`;
             AdminPanel.elements.athleteDetailContent.classList.remove('hidden');
-            AdminPanel.switchTab('prescrever'); // Sempre reseta para a aba 'prescrever'
+            AdminPanel.switchTab('prescrever'); 
             AdminPanel.loadWorkouts(uid);
-            AdminPanel.loadIaHistory(uid); // V2.6
+            AdminPanel.loadIaHistory(uid);
         }
         
         document.querySelectorAll('.athlete-list-item').forEach(el => {
@@ -245,58 +220,38 @@ const AdminPanel = {
         workoutsList.innerHTML = "<p>Carregando treinos...</p>";
         
         const workoutsRef = AdminPanel.state.db.ref(`data/${athleteId}/workouts`);
-        // Recria o listener principal de treinos
-        AppPrincipal.state.listeners['adminWorkouts'] = workoutsRef.orderByChild('date').limitToLast(200).on('value', snapshot => {
+        AppPrincipal.state.listeners['adminWorkouts'] = workoutsRef.orderByChild('date').on('value', snapshot => {
             workoutsList.innerHTML = ""; 
             if (!snapshot.exists()) {
                 workoutsList.innerHTML = "<p>Nenhum treino agendado.</p>";
                 return;
             }
             snapshot.forEach(childSnapshot => {
-                const card = AdminPanel.createWorkoutCard(
-                    childSnapshot.key,
-                    childSnapshot.val(), 
-                    athleteId
-                );
+                const card = AdminPanel.createWorkoutCard(childSnapshot.key, childSnapshot.val(), athleteId);
                 workoutsList.prepend(card);
             });
         });
     },
     
-    // Carrega histórico IA (V2.6)
     loadIaHistory: (athleteId) => {
         const { iaHistoryList } = AdminPanel.elements;
         if (!iaHistoryList) return; 
-        
-        iaHistoryList.innerHTML = "<p>Carregando histórico de IA...</p>";
-        
+        iaHistoryList.innerHTML = "<p>Carregando histórico...</p>";
         const historyRef = AdminPanel.state.db.ref(`iaAnalysisHistory/${athleteId}`);
-        // Recria o listener principal do histórico
         AppPrincipal.state.listeners['adminIaHistory'] = historyRef.orderByChild('analysisDate').limitToLast(10).on('value', snapshot => {
             iaHistoryList.innerHTML = ""; 
             if (!snapshot.exists()) {
-                iaHistoryList.innerHTML = "<p>Nenhuma análise de IA salva para este atleta.</p>";
+                iaHistoryList.innerHTML = "<p>Nenhuma análise salva.</p>";
                 return;
             }
-
             let items = [];
-            snapshot.forEach(childSnapshot => {
-                items.push({
-                    id: childSnapshot.key,
-                    data: childSnapshot.val()
-                });
-            });
-
-            // Inverte para mostrar o mais novo primeiro
-            items.reverse().forEach(item => {
-                const card = AdminPanel.createIaHistoryCard(item.id, item.data);
-                iaHistoryList.appendChild(card);
-            });
+            snapshot.forEach(c => items.push({id: c.key, data: c.val()}));
+            items.reverse().forEach(item => iaHistoryList.appendChild(AdminPanel.createIaHistoryCard(item.id, item.data)));
         });
     },
 
     // ===================================================================
-    // ATUALIZADO (V3.5): Salva o formulário estruturado
+    // SALVAMENTO ESTRUTURADO (ATUALIZAÇÃO V4.0)
     // ===================================================================
     handleAddWorkout: (e) => {
         e.preventDefault();
@@ -305,47 +260,43 @@ const AdminPanel = {
         
         if (!selectedAthleteId) return alert("Selecione um atleta.");
 
-        // 1. Coleta dados básicos
         const date = addWorkoutForm.querySelector('#workout-date').value;
         const title = addWorkoutForm.querySelector('#workout-title').value;
         
         if (!date || !title) return alert("Data e Título são obrigatórios.");
 
-        // 2. Coleta dados estruturados
+        // Dados Estruturados
         const modalidade = addWorkoutForm.querySelector('#workout-modalidade').value;
         const tipoTreino = addWorkoutForm.querySelector('#workout-tipo-treino').value;
         const intensidade = addWorkoutForm.querySelector('#workout-intensidade').value;
         const percurso = addWorkoutForm.querySelector('#workout-percurso').value;
         
-        // 3. Coleta métricas (opcionais)
         const distancia = addWorkoutForm.querySelector('#workout-distancia').value.trim();
         const tempo = addWorkoutForm.querySelector('#workout-tempo').value.trim();
         const pace = addWorkoutForm.querySelector('#workout-pace').value.trim();
         const velocidade = addWorkoutForm.querySelector('#workout-velocidade').value.trim();
-        
-        // 4. Coleta observações (opcional)
         const observacoes = addWorkoutForm.querySelector('#workout-observacoes').value.trim();
 
-        // 5. Constrói a string de 'description'
+        // Monta Descrição Visual
         let description = `[${modalidade}] - [${tipoTreino}]\n`;
         description += `Intensidade: ${intensidade}\n`;
         description += `Percurso: ${percurso}\n`;
         description += `--- \n`;
-        
         if (distancia) description += `Distância: ${distancia}\n`;
         if (tempo) description += `Tempo: ${tempo}\n`;
         if (pace) description += `Pace: ${pace}\n`;
         if (velocidade) description += `Velocidade: ${velocidade}\n`;
-        
-        if (observacoes) {
-             description += `--- \nObservações:\n${observacoes}`;
-        }
+        if (observacoes) description += `--- \nObservações:\n${observacoes}`;
 
-        // 6. Prepara o objeto para o Firebase
+        // Objeto Completo
         const workoutData = {
             date: date,
             title: title,
-            description: description, // A string formatada vai aqui
+            description: description,
+            // Campos estruturados salvos separadamente
+            structure: {
+                modalidade, tipoTreino, intensidade, percurso, distancia, tempo, pace, velocidade
+            },
             createdBy: AdminPanel.state.currentUser.uid,
             createdAt: new Date().toISOString(),
             status: "planejado",
@@ -354,22 +305,18 @@ const AdminPanel = {
             stravaData: null
         };
 
-        // 7. Salva no DB
         AdminPanel.state.db.ref(`data/${selectedAthleteId}/workouts`).push(workoutData)
             .then(() => {
-                // Limpa apenas os campos de métricas e observações
                 addWorkoutForm.querySelector('#workout-distancia').value = "";
                 addWorkoutForm.querySelector('#workout-tempo').value = "";
                 addWorkoutForm.querySelector('#workout-pace').value = "";
                 addWorkoutForm.querySelector('#workout-velocidade').value = "";
                 addWorkoutForm.querySelector('#workout-observacoes').value = "";
                 addWorkoutForm.querySelector('#workout-title').value = "";
-                // Mantém data, modalidade, tipo, intensidade e percurso para facilitar o próximo cadastro
             })
-            .catch(err => alert("Falha ao salvar o treino: " + err.message));
+            .catch(err => alert("Falha ao salvar: " + err.message));
     },
     
-    // Card de Treino (Admin V2.6)
     createWorkoutCard: (id, data, athleteId) => {
         const el = document.createElement('div');
         el.className = 'workout-card';
@@ -394,93 +341,45 @@ const AdminPanel = {
             </div>
         `;
         
-        // Abre o Modal de Comentários (Coach)
         el.querySelector('.btn-comment').addEventListener('click', () => {
             AppPrincipal.openFeedbackModal(id, athleteId, data.title);
         });
         
-        // Deletar o treino (Coach)
         el.querySelector('[data-action="delete"]').addEventListener('click', () => {
-            if (confirm("Tem certeza que deseja apagar este treino?")) {
+            if (confirm("Apagar este treino?")) {
                 const updates = {};
                 updates[`/data/${athleteId}/workouts/${id}`] = null;
                 updates[`/publicWorkouts/${id}`] = null;
                 updates[`/workoutComments/${id}`] = null;
                 updates[`/workoutLikes/${id}`] = null;
-                
-                AdminPanel.state.db.ref().update(updates)
-                    .catch(err => alert("Falha ao deletar: " + err.message));
+                AdminPanel.state.db.ref().update(updates).catch(err => alert("Erro: " + err.message));
             }
         });
         
-        // Carrega Likes e Comentários (V2.6)
         AdminPanel.loadWorkoutStats(el, id, athleteId);
-        
         return el;
     },
     
-    // Card Histórico IA (V2.6)
     createIaHistoryCard: (id, data) => {
         const el = document.createElement('div');
         el.className = 'workout-card';
-        
         const date = new Date(data.analysisDate).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
-        
-        // Pega um resumo da análise (primeiras linhas)
         const summary = data.analysisResult.split('\n').slice(0, 3).join('\n') + '...';
-
         el.innerHTML = `
             <div class="workout-card-header">
-                <div>
-                    <span class="date">Análise de ${date}</span>
-                    <span class="title">Gerada por ${AppPrincipal.state.userCache[data.coachUid]?.name || 'Coach'}</span>
-                </div>
+                <div><span class="date">Análise de ${date}</span></div>
             </div>
-            <div class="workout-card-body">
-                <p>${summary}</p>
-            </div>
+            <div class="workout-card-body"><p>${summary}</p></div>
         `;
-
-        // Abre o modal da IA em modo "Visualização"
-        el.addEventListener('click', () => {
-            AppPrincipal.openIaAnalysisModal(data);
-        });
-        
+        el.addEventListener('click', () => AppPrincipal.openIaAnalysisModal(data));
         return el;
     },
 
-    // ===================================================================
-    // HELPER DO STRAVA - ADMIN (Inserção do Link do Mapa)
-    // ===================================================================
     createStravaDataDisplay: (stravaData) => {
-        // Verifica se existe link de mapa
         let mapLinkHtml = '';
         if (stravaData.mapLink) {
             mapLinkHtml = `<p style="margin-top:5px;"><a href="${stravaData.mapLink}" target="_blank" style="color: #fc4c02; font-weight: bold; text-decoration: none;">🗺️ Ver Mapa no Strava</a></p>`;
         }
-
-        // Tabela de Splits
-        let splitsHtml = '';
-        if (stravaData.splits && Array.isArray(stravaData.splits) && stravaData.splits.length > 0) {
-             let rows = '';
-             stravaData.splits.forEach(split => {
-                 rows += `<tr>
-                    <td style="padding:4px;">${split.km}</td>
-                    <td style="padding:4px;">${split.pace}</td>
-                    <td style="padding:4px;">${split.elev}m</td>
-                 </tr>`;
-             });
-             
-             splitsHtml = `
-             <details style="margin-top:10px; font-size:0.9rem; color:#666;">
-                <summary style="cursor:pointer;">Ver Parciais (Km a Km)</summary>
-                <table style="width:100%; margin-top:5px; text-align:left; border-collapse:collapse;">
-                    <thead style="background:#f0f0f0;"><tr><th style="padding:4px;">Km</th><th style="padding:4px;">Pace</th><th style="padding:4px;">Elev</th></tr></thead>
-                    <tbody>${rows}</tbody>
-                </table>
-             </details>`;
-        }
-
         return `
             <fieldset class="strava-data-display">
                 <legend><i class='bx bxl-strava'></i> Dados Extraídos (Gemini Vision)</legend>
@@ -488,143 +387,367 @@ const AdminPanel = {
                 <p>Tempo:     ${stravaData.tempo || "N/A"}</p>
                 <p>Ritmo:     ${stravaData.ritmo || "N/A"}</p>
                 ${mapLinkHtml}
-                ${splitsHtml}
             </fieldset>
         `;
     },
     
-    // Carrega status (likes/comentários) de um card (V3.0 - Bug 2)
     loadWorkoutStats: (cardElement, workoutId, ownerId) => {
         const likeBtn = cardElement.querySelector('.btn-like');
         const likeCount = cardElement.querySelector('.like-count');
         const commentCount = cardElement.querySelector('.comment-count');
-        
         const isOwner = (AdminPanel.state.currentUser.uid === ownerId);
         
         const likesRef = AdminPanel.state.db.ref(`workoutLikes/${workoutId}`);
         const commentsRef = AdminPanel.state.db.ref(`workoutComments/${workoutId}`);
         
-        const likesListenerKey = `likes_${workoutId}`;
-        const commentsListenerKey = `comments_${workoutId}`;
-
-        const likesListener = likesRef.on('value', snapshot => {
+        AppPrincipal.state.listeners[`likes_${workoutId}`] = likesRef.on('value', snapshot => {
             const count = snapshot.numChildren();
             likeCount.textContent = count;
-
-            if (snapshot.hasChild(AdminPanel.state.currentUser.uid)) {
-                likeBtn.classList.add('liked');
-            } else {
-                likeBtn.classList.remove('liked');
-            }
+            if (snapshot.hasChild(AdminPanel.state.currentUser.uid)) likeBtn.classList.add('liked');
+            else likeBtn.classList.remove('liked');
             
-            if (isOwner) {
-                likeBtn.disabled = true;
-            }
+            if (isOwner) likeBtn.disabled = true;
 
             if (count > 0) {
                 likeCount.classList.add('like-count-btn');
-                likeCount.onclick = (e) => {
-                    e.stopPropagation();
-                    AppPrincipal.openWhoLikedModal(workoutId);
-                };
+                likeCount.onclick = (e) => { e.stopPropagation(); AppPrincipal.openWhoLikedModal(workoutId); };
             } else {
                 likeCount.classList.remove('like-count-btn');
                 likeCount.onclick = null;
             }
         });
         
-        const commentsListener = commentsRef.on('value', snapshot => {
-            commentCount.textContent = snapshot.numChildren();
-        });
+        AppPrincipal.state.listeners[`comments_${workoutId}`] = commentsRef.on('value', snapshot => commentCount.textContent = snapshot.numChildren());
 
-        // Ação de Curtir (Coach)
         if (!isOwner) {
             likeBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const myLikeRef = likesRef.child(AdminPanel.state.currentUser.uid);
                 myLikeRef.once('value', snapshot => {
-                    if (snapshot.exists()) {
-                        myLikeRef.remove(); // Descurtir
-                    } else {
-                        myLikeRef.set(true); // Curtir
-                    }
+                    if (snapshot.exists()) myLikeRef.remove(); else myLikeRef.set(true);
                 });
             });
         }
-        
-        AppPrincipal.state.listeners[likesListenerKey] = likesListener;
-        AppPrincipal.state.listeners[commentsListenerKey] = commentsListener;
     },
 
-    // Análise IA (V2.7)
     handleAnalyzeAthleteIA: async () => {
         const { selectedAthleteId } = AdminPanel.state;
         if (!selectedAthleteId) return alert("Selecione um atleta.");
         
-        AppPrincipal.openIaAnalysisModal(); // Abre o modal (sem dados)
-        
+        AppPrincipal.openIaAnalysisModal(); 
         const iaAnalysisOutput = AppPrincipal.elements.iaAnalysisOutput;
         const saveBtn = AppPrincipal.elements.saveIaAnalysisBtn;
         
         iaAnalysisOutput.textContent = "Coletando dados do atleta...";
-        saveBtn.classList.add('hidden'); // Esconde o botão Salvar
+        saveBtn.classList.add('hidden'); 
 
         try {
-            // 1. Coletar dados do atleta (últimos 10 treinos)
             const athleteName = AdminPanel.state.athletes[selectedAthleteId].name;
             const dataRef = AdminPanel.state.db.ref(`data/${selectedAthleteId}/workouts`);
             const snapshot = await dataRef.orderByChild('date').limitToLast(10).once('value');
             
-            if (!snapshot.exists()) {
-                throw new Error("Nenhum dado de treino encontrado para este atleta.");
-            }
-            
+            if (!snapshot.exists()) throw new Error("Nenhum dado de treino encontrado.");
             const workoutData = snapshot.val();
             
-            // 2. Montar o Prompt
-            const prompt = `
-                ATUE COMO: Um Coach de Corrida Sênior (Leandro) analisando um atleta.
-                OBJETIVO: Analisar os últimos 10 treinos de um atleta e fornecer um resumo e pontos de ação.
-                
-                ATLETA: ${athleteName}
-                
-                DADOS BRUTOS (JSON dos últimos 10 treinos):
-                ${JSON.stringify(workoutData, null, 2)}
-                
-                ANÁLISE SOLICITADA:
-                Com base nos dados acima (status, feedback do atleta, datas, e stravaData se houver), gere um relatório conciso em TÓPICOS (Markdown) respondendo:
-                1.  **Consistência:** O atleta está treinando regularmente? (Compare as 'datas' dos treinos 'realizados').
-                2.  **Percepção de Esforço:** Qual é o sentimento geral do atleta? (Analise os campos 'feedback').
-                3.  **Performance (Dados):** O atleta registrou dados do Strava (stravaData)? Se sim, os ritmos são condizentes com os treinos?
-                4.  **Pontos de Atenção:** Existem sinais de alerta? (Ex: Dores, status 'nao_realizado' frequente, feedbacks negativos).
-                5.  **Sugestão de Foco:** Qual deve ser o foco para a próxima semana? (Ex: Focar em recuperação, aumentar volume, etc.).
-            `;
+            const prompt = `ATUE COMO: Coach de Corrida. ATLETA: ${athleteName}. DADOS: ${JSON.stringify(workoutData, null, 2)}. Crie um relatório breve e direto sobre consistência e performance.`;
             
-            iaAnalysisOutput.textContent = "Enviando dados para análise (Gemini)...";
-            
-            // 3. Chamar a API (do AppPrincipal)
+            iaAnalysisOutput.textContent = "Gerando análise (Gemini)...";
             const analysisResult = await AppPrincipal.callGeminiTextAPI(prompt);
             
-            // 4. Exibir resultado e armazenar no state (para o botão Salvar)
             iaAnalysisOutput.textContent = analysisResult;
             AppPrincipal.state.currentAnalysisData = {
                 analysisDate: new Date().toISOString(),
                 coachUid: AdminPanel.state.currentUser.uid,
-                prompt: prompt, // Salva o prompt para referência futura
+                prompt: prompt,
                 analysisResult: analysisResult
             };
-            saveBtn.classList.remove('hidden'); // Mostra o botão Salvar
+            saveBtn.classList.remove('hidden'); 
 
         } catch (err) {
-            console.error("Erro na Análise IA:", err);
             iaAnalysisOutput.textContent = `ERRO: ${err.message}`;
-            saveBtn.classList.add('hidden'); // Esconde o botão se der erro
         }
     }
 };
 
 // ===================================================================
-// 4. AtletaPanel (Lógica do Painel Atleta V3.3)
+// 4. FinancePanel (NOVO MÓDULO)
+// ===================================================================
+const FinancePanel = {
+    state: {},
+    elements: {},
+
+    init: (user, db) => {
+        console.log("FinancePanel V1.0: Inicializado.");
+        FinancePanel.state = { db, currentUser: user, inventory: {}, transactions: [] };
+        
+        FinancePanel.elements = {
+            totalReceita: document.getElementById('fin-total-receita'),
+            totalDespesa: document.getElementById('fin-total-despesa'),
+            saldo: document.getElementById('fin-saldo'),
+            
+            // Abas
+            tabLancamentosBtn: document.querySelector('[data-fin-tab="lancamentos"]'),
+            tabEstoqueBtn: document.querySelector('[data-fin-tab="estoque"]'),
+            tabLancamentosContent: document.getElementById('fin-tab-lancamentos'),
+            tabEstoqueContent: document.getElementById('fin-tab-estoque'),
+            
+            // Forms
+            transForm: document.getElementById('finance-transaction-form'),
+            prodForm: document.getElementById('finance-product-form'),
+            
+            // Inputs Especiais
+            finType: document.getElementById('fin-type'),
+            finCategory: document.getElementById('fin-category'),
+            finStudentSelector: document.getElementById('fin-student-selector'),
+            finStudentSelect: document.getElementById('fin-student-select'),
+            finProductSelector: document.getElementById('fin-product-selector'),
+            finProductSelect: document.getElementById('fin-product-select'),
+            
+            // Listas
+            transactionsList: document.getElementById('finance-transactions-list'),
+            inventoryList: document.getElementById('finance-inventory-list')
+        };
+
+        // Eventos de Abas
+        FinancePanel.elements.tabLancamentosBtn.addEventListener('click', () => FinancePanel.switchTab('lancamentos'));
+        FinancePanel.elements.tabEstoqueBtn.addEventListener('click', () => FinancePanel.switchTab('estoque'));
+        
+        // Logica Dinâmica do Form de Transação
+        FinancePanel.elements.finType.addEventListener('change', FinancePanel.handleTypeChange);
+        FinancePanel.elements.finCategory.addEventListener('change', FinancePanel.handleCategoryChange);
+        
+        // Submits
+        FinancePanel.elements.transForm.addEventListener('submit', FinancePanel.handleTransactionSubmit);
+        FinancePanel.elements.prodForm.addEventListener('submit', FinancePanel.handleProductSubmit);
+
+        // Preenche Select de Alunos
+        FinancePanel.populateStudents();
+
+        // Carrega Dados do Firebase
+        FinancePanel.loadData();
+    },
+
+    switchTab: (tab) => {
+        const { tabLancamentosBtn, tabEstoqueBtn, tabLancamentosContent, tabEstoqueContent } = FinancePanel.elements;
+        const isLanc = (tab === 'lancamentos');
+        tabLancamentosBtn.classList.toggle('active', isLanc);
+        tabLancamentosContent.classList.toggle('active', isLanc);
+        tabLancamentosContent.classList.toggle('hidden', !isLanc);
+        
+        tabEstoqueBtn.classList.toggle('active', !isLanc);
+        tabEstoqueContent.classList.toggle('active', !isLanc);
+        tabEstoqueContent.classList.toggle('hidden', isLanc);
+    },
+
+    populateStudents: () => {
+        const { finStudentSelect } = FinancePanel.elements;
+        finStudentSelect.innerHTML = '<option value="">Selecione o Aluno...</option>';
+        Object.entries(AppPrincipal.state.userCache).forEach(([uid, data]) => {
+            const opt = document.createElement('option');
+            opt.value = uid;
+            opt.textContent = data.name;
+            finStudentSelect.appendChild(opt);
+        });
+    },
+
+    handleTypeChange: () => {
+        const type = FinancePanel.elements.finType.value;
+        const cat = FinancePanel.elements.finCategory;
+        cat.innerHTML = "";
+        if (type === 'receita') {
+            cat.innerHTML += '<option value="Mensalidade">Mensalidade</option>';
+            cat.innerHTML += '<option value="Venda">Venda de Produto</option>';
+            cat.innerHTML += '<option value="Outro">Outro</option>';
+        } else {
+            cat.innerHTML += '<option value="Conta">Conta a Pagar</option>';
+            cat.innerHTML += '<option value="Equipamento">Equipamento</option>';
+            cat.innerHTML += '<option value="Outro">Outro</option>';
+        }
+        FinancePanel.handleCategoryChange();
+    },
+
+    handleCategoryChange: () => {
+        const cat = FinancePanel.elements.finCategory.value;
+        const type = FinancePanel.elements.finType.value;
+        const { finStudentSelector, finProductSelector } = FinancePanel.elements;
+        
+        // Lógica de visualização
+        if (type === 'receita' && cat === 'Mensalidade') {
+            finStudentSelector.classList.remove('hidden');
+            finProductSelector.classList.add('hidden');
+        } else if (type === 'receita' && cat === 'Venda') {
+            finStudentSelector.classList.remove('hidden'); // Opcional: Saber quem comprou
+            finProductSelector.classList.remove('hidden');
+        } else {
+            finStudentSelector.classList.add('hidden');
+            finProductSelector.classList.add('hidden');
+        }
+    },
+
+    loadData: () => {
+        const uid = FinancePanel.state.currentUser.uid;
+        // Caminho Seguro: data/UID/finance
+        const financeRef = FinancePanel.state.db.ref(`data/${uid}/finance`);
+        
+        AppPrincipal.state.listeners['financeData'] = financeRef.on('value', snapshot => {
+            const data = snapshot.val() || {};
+            FinancePanel.state.transactions = data.transactions ? Object.entries(data.transactions) : [];
+            FinancePanel.state.inventory = data.inventory || {};
+            
+            FinancePanel.renderTransactions();
+            FinancePanel.renderInventory();
+            FinancePanel.updateSummary();
+            FinancePanel.populateProductSelect();
+        });
+    },
+
+    populateProductSelect: () => {
+        const { finProductSelect } = FinancePanel.elements;
+        finProductSelect.innerHTML = '<option value="">Selecione o Produto...</option>';
+        Object.entries(FinancePanel.state.inventory).forEach(([key, prod]) => {
+            if (prod.qty > 0) {
+                const opt = document.createElement('option');
+                opt.value = key;
+                opt.textContent = `${prod.name} (R$ ${prod.price} - Qtd: ${prod.qty})`;
+                finProductSelect.appendChild(opt);
+            }
+        });
+    },
+
+    updateSummary: () => {
+        let rec = 0, desp = 0;
+        const currentMonth = new Date().getMonth();
+        
+        FinancePanel.state.transactions.forEach(([key, t]) => {
+            const tDate = new Date(t.date);
+            // Filtra pelo mês atual para o card, ou pode ser total
+            if (tDate.getMonth() === currentMonth) {
+                if (t.type === 'receita') rec += parseFloat(t.amount);
+                else desp += parseFloat(t.amount);
+            }
+        });
+
+        FinancePanel.elements.totalReceita.textContent = `R$ ${rec.toFixed(2)}`;
+        FinancePanel.elements.totalDespesa.textContent = `R$ ${desp.toFixed(2)}`;
+        FinancePanel.elements.saldo.textContent = `R$ ${(rec - desp).toFixed(2)}`;
+        
+        // Cores do saldo
+        FinancePanel.elements.saldo.style.color = (rec - desp) >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+    },
+
+    renderTransactions: () => {
+        const list = FinancePanel.elements.transactionsList;
+        list.innerHTML = "";
+        
+        // Ordenar por data decrescente
+        const sorted = [...FinancePanel.state.transactions].sort((a,b) => new Date(b[1].date) - new Date(a[1].date));
+
+        sorted.forEach(([key, t]) => {
+            const tr = document.createElement('tr');
+            const dateStr = new Date(t.date).toLocaleDateString('pt-BR');
+            const typeBadge = t.type === 'receita' ? '<span class="badge badge-success">Entrada</span>' : '<span class="badge badge-danger">Saída</span>';
+            
+            tr.innerHTML = `
+                <td>${dateStr}</td>
+                <td>${t.description}</td>
+                <td>${t.category}</td>
+                <td style="color: ${t.type === 'receita' ? 'green' : 'red'}; font-weight: bold;">
+                    R$ ${parseFloat(t.amount).toFixed(2)}
+                </td>
+                <td><button class="btn btn-danger btn-small delete-trans" data-key="${key}"><i class='bx bx-trash'></i></button></td>
+            `;
+            
+            tr.querySelector('.delete-trans').addEventListener('click', () => FinancePanel.deleteTransaction(key));
+            list.appendChild(tr);
+        });
+    },
+
+    renderInventory: () => {
+        const list = FinancePanel.elements.inventoryList;
+        list.innerHTML = "";
+        
+        Object.entries(FinancePanel.state.inventory).forEach(([key, prod]) => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${prod.name}</td>
+                <td>R$ ${parseFloat(prod.price).toFixed(2)}</td>
+                <td>${prod.qty} un</td>
+                <td><button class="btn btn-danger btn-small delete-prod" data-key="${key}"><i class='bx bx-trash'></i></button></td>
+            `;
+            tr.querySelector('.delete-prod').addEventListener('click', () => FinancePanel.deleteProduct(key));
+            list.appendChild(tr);
+        });
+    },
+
+    handleTransactionSubmit: async (e) => {
+        e.preventDefault();
+        const uid = FinancePanel.state.currentUser.uid;
+        
+        const type = FinancePanel.elements.finType.value;
+        const category = FinancePanel.elements.finCategory.value;
+        const desc = document.getElementById('fin-description').value;
+        const amount = parseFloat(document.getElementById('fin-amount').value);
+        const date = document.getElementById('fin-date').value;
+        const studentId = document.getElementById('fin-student-select').value;
+        const productId = document.getElementById('fin-product-select').value;
+
+        if (category === 'Venda' && !productId) return alert("Selecione o produto vendido.");
+
+        // Lógica de Abater Estoque
+        if (type === 'receita' && category === 'Venda') {
+            const prod = FinancePanel.state.inventory[productId];
+            if (!prod || prod.qty <= 0) return alert("Produto sem estoque.");
+            
+            // Atualiza estoque
+            await FinancePanel.state.db.ref(`data/${uid}/finance/inventory/${productId}`).update({
+                qty: prod.qty - 1
+            });
+        }
+
+        const transaction = {
+            type, category, description: desc, amount, date,
+            studentId: studentId || null,
+            productId: productId || null,
+            createdAt: new Date().toISOString()
+        };
+
+        await FinancePanel.state.db.ref(`data/${uid}/finance/transactions`).push(transaction);
+        alert("Lançamento salvo!");
+        FinancePanel.elements.transForm.reset();
+        FinancePanel.handleTypeChange(); // Reseta visual
+    },
+
+    handleProductSubmit: async (e) => {
+        e.preventDefault();
+        const uid = FinancePanel.state.currentUser.uid;
+        
+        const prod = {
+            name: document.getElementById('prod-name').value,
+            price: parseFloat(document.getElementById('prod-price').value),
+            cost: parseFloat(document.getElementById('prod-cost').value) || 0,
+            qty: parseInt(document.getElementById('prod-qty').value)
+        };
+
+        await FinancePanel.state.db.ref(`data/${uid}/finance/inventory`).push(prod);
+        alert("Produto cadastrado!");
+        FinancePanel.elements.prodForm.reset();
+    },
+
+    deleteTransaction: (key) => {
+        if(confirm("Apagar transação?")) {
+            FinancePanel.state.db.ref(`data/${FinancePanel.state.currentUser.uid}/finance/transactions/${key}`).remove();
+        }
+    },
+    
+    deleteProduct: (key) => {
+        if(confirm("Apagar produto?")) {
+            FinancePanel.state.db.ref(`data/${FinancePanel.state.currentUser.uid}/finance/inventory/${key}`).remove();
+        }
+    }
+};
+
+// ===================================================================
+// 5. AtletaPanel (Lógica do Painel Atleta)
 // ===================================================================
 const AtletaPanel = {
     state: {},
@@ -637,10 +760,7 @@ const AtletaPanel = {
             workoutsList: document.getElementById('atleta-workouts-list'),
             logManualActivityBtn: document.getElementById('log-manual-activity-btn')
         };
-
-        // V2.3: Botão Log Manual
         AtletaPanel.elements.logManualActivityBtn.addEventListener('click', AppPrincipal.openLogActivityModal);
-
         AtletaPanel.loadWorkouts(user.uid);
     },
 
@@ -649,24 +769,19 @@ const AtletaPanel = {
         workoutsList.innerHTML = "<p>Carregando seus treinos...</p>";
         
         const workoutsRef = AtletaPanel.state.db.ref(`data/${athleteId}/workouts`);
-        AppPrincipal.state.listeners['atletaWorkouts'] = workoutsRef.orderByChild('date').limitToLast(50).on('value', snapshot => {
+        AppPrincipal.state.listeners['atletaWorkouts'] = workoutsRef.orderByChild('date').on('value', snapshot => {
             workoutsList.innerHTML = ""; 
             if (!snapshot.exists()) {
                 workoutsList.innerHTML = "<p>Nenhum treino encontrado. Fale com seu coach!</p>";
                 return;
             }
             snapshot.forEach(childSnapshot => {
-                const card = AtletaPanel.createWorkoutCard(
-                    childSnapshot.key, 
-                    childSnapshot.val(), 
-                    athleteId
-                );
+                const card = AtletaPanel.createWorkoutCard(childSnapshot.key, childSnapshot.val(), athleteId);
                 workoutsList.prepend(card);
             });
         });
     },
 
-    // Card de Treino (Atleta V3.3)
     createWorkoutCard: (id, data, athleteId) => {
         const el = document.createElement('div');
         el.className = 'workout-card';
@@ -687,63 +802,30 @@ const AtletaPanel = {
                     <button class="action-btn btn-like"><i class='bx bx-heart'></i> <span class="like-count">0</span></button>
                     <button class="action-btn btn-comment"><i class='bx bx-comment'></i> <span class="comment-count">0</span></button>
                 </div>
-                <button class="btn btn-primary btn-small" data-action="feedback">
-                    <i class='bx bx-edit'></i> Feedback
-                </button>
+                <button class="btn btn-primary btn-small" data-action="feedback"><i class='bx bx-edit'></i> Feedback</button>
             </div>
         `;
 
-        // Ação de abrir o modal (Atleta)
         const feedbackBtn = el.querySelector('[data-action="feedback"]');
         feedbackBtn.addEventListener('click', (e) => {
-            e.stopPropagation(); // Impede o clique duplo
+            e.stopPropagation(); 
             AppPrincipal.openFeedbackModal(id, athleteId, data.title);
         });
-        // Clicar no card todo (exceto botões e links) também abre o modal
         el.addEventListener('click', (e) => {
              if (!e.target.closest('button') && !e.target.closest('a')) {
                  AppPrincipal.openFeedbackModal(id, athleteId, data.title);
              }
         });
         
-        // Carrega Likes e Comentários
         AtletaPanel.loadWorkoutStats(el, id, athleteId);
-        
         return el;
     },
     
-    // ===================================================================
-    // HELPER DO STRAVA - ATLETA (Inserção do Link do Mapa)
-    // ===================================================================
     createStravaDataDisplay: (stravaData) => {
-        // Verifica se existe link de mapa
         let mapLinkHtml = '';
         if (stravaData.mapLink) {
             mapLinkHtml = `<p style="margin-top:5px;"><a href="${stravaData.mapLink}" target="_blank" style="color: #fc4c02; font-weight: bold; text-decoration: none;">🗺️ Ver Mapa no Strava</a></p>`;
         }
-        
-        // TABELA DE SPLITS PARA ATLETA
-        let splitsHtml = '';
-        if (stravaData.splits && Array.isArray(stravaData.splits) && stravaData.splits.length > 0) {
-             let rows = '';
-             stravaData.splits.forEach(split => {
-                 rows += `<tr>
-                    <td style="padding:4px;">${split.km}</td>
-                    <td style="padding:4px;">${split.pace}</td>
-                    <td style="padding:4px;">${split.elev}m</td>
-                 </tr>`;
-             });
-             
-             splitsHtml = `
-             <details style="margin-top:10px; font-size:0.9rem; color:#666;">
-                <summary style="cursor:pointer;">Ver Parciais (Km a Km)</summary>
-                <table style="width:100%; margin-top:5px; text-align:left; border-collapse:collapse;">
-                    <thead style="background:#f0f0f0;"><tr><th style="padding:4px;">Km</th><th style="padding:4px;">Pace</th><th style="padding:4px;">Elev</th></tr></thead>
-                    <tbody>${rows}</tbody>
-                </table>
-             </details>`;
-        }
-
         return `
             <fieldset class="strava-data-display">
                 <legend><i class='bx bxl-strava'></i> Dados Extraídos (Gemini Vision)</legend>
@@ -751,83 +833,51 @@ const AtletaPanel = {
                 <p>Tempo:     ${stravaData.tempo || "N/A"}</p>
                 <p>Ritmo:     ${stravaData.ritmo || "N/A"}</p>
                 ${mapLinkHtml}
-                ${splitsHtml}
             </fieldset>
         `;
     },
     
-    // Carrega status (likes/comentários) de um card (V3.3)
     loadWorkoutStats: (cardElement, workoutId, ownerId) => {
         const likeBtn = cardElement.querySelector('.btn-like');
         const likeCount = cardElement.querySelector('.like-count');
         const commentCount = cardElement.querySelector('.comment-count');
         
         const isOwner = (AtletaPanel.state.currentUser.uid === ownerId);
-        
         const likesRef = AtletaPanel.state.db.ref(`workoutLikes/${workoutId}`);
         const commentsRef = AtletaPanel.state.db.ref(`workoutComments/${workoutId}`);
         
-        const likesListenerKey = `likes_${workoutId}`;
-        const commentsListenerKey = `comments_${workoutId}`;
-
-        const likesListener = likesRef.on('value', snapshot => {
+        AppPrincipal.state.listeners[`likes_${workoutId}`] = likesRef.on('value', snapshot => {
             const count = snapshot.numChildren();
             likeCount.textContent = count;
-
-            if (snapshot.hasChild(AtletaPanel.state.currentUser.uid)) {
-                likeBtn.classList.add('liked');
-            } else {
-                likeBtn.classList.remove('liked');
-            }
-
-            if (isOwner) {
-                likeBtn.disabled = true;
-            }
+            if (snapshot.hasChild(AtletaPanel.state.currentUser.uid)) likeBtn.classList.add('liked');
+            else likeBtn.classList.remove('liked');
+            if (isOwner) likeBtn.disabled = true;
 
             if (count > 0) {
                 likeCount.classList.add('like-count-btn');
-                likeCount.onclick = (e) => {
-                    e.stopPropagation();
-                    AppPrincipal.openWhoLikedModal(workoutId);
-                };
+                likeCount.onclick = (e) => { e.stopPropagation(); AppPrincipal.openWhoLikedModal(workoutId); };
             } else {
                 likeCount.classList.remove('like-count-btn');
                 likeCount.onclick = null;
             }
         });
         
-        const commentsListener = commentsRef.on('value', snapshot => {
-            commentCount.textContent = snapshot.numChildren();
-        });
+        AppPrincipal.state.listeners[`comments_${workoutId}`] = commentsRef.on('value', snapshot => commentCount.textContent = snapshot.numChildren());
 
-        // Ação de Curtir (Atleta)
         if (!isOwner) {
             likeBtn.addEventListener('click', (e) => {
-                e.stopPropagation(); // Impede o modal de abrir
+                e.stopPropagation(); 
                 const myLikeRef = likesRef.child(AtletaPanel.state.currentUser.uid);
                 myLikeRef.once('value', snapshot => {
-                    if (snapshot.exists()) {
-                        myLikeRef.remove(); // Descurtir
-                    } else {
-                        myLikeRef.set(true); // Curtir
-                    }
+                    if (snapshot.exists()) myLikeRef.remove(); else myLikeRef.set(true);
                 });
             });
         }
-        
-        // Ação de Comentar (Atleta) - Abre o modal
-        cardElement.querySelector('.btn-comment').addEventListener('click', (e) => {
-             e.stopPropagation(); 
-             // O clique no card (que é o listener principal) vai abrir o modal
-        });
-        
-        AppPrincipal.state.listeners[likesListenerKey] = likesListener;
-        AppPrincipal.state.listeners[commentsListenerKey] = commentsListener;
     }
 };
 
 // ===================================================================
-// 5. FeedPanel (Lógica do Feed Social V3.3)
+// 6. FeedPanel (Lógica do Feed Social)
 // ===================================================================
 const FeedPanel = {
     state: {},
@@ -837,14 +887,12 @@ const FeedPanel = {
         console.log("FeedPanel V3.3: Inicializado.");
         FeedPanel.state = { db, currentUser: user };
         FeedPanel.elements = { feedList: document.getElementById('feed-list') };
-        
         FeedPanel.loadFeed();
     },
 
     loadFeed: () => {
         const { feedList } = FeedPanel.elements;
         feedList.innerHTML = "<p>Carregando feed...</p>";
-        
         const feedRef = FeedPanel.state.db.ref('publicWorkouts');
         AppPrincipal.state.listeners['feedData'] = feedRef.orderByChild('realizadoAt').limitToLast(20).on('value', snapshot => {
             feedList.innerHTML = "";
@@ -852,42 +900,23 @@ const FeedPanel = {
                 feedList.innerHTML = "<p>Nenhum treino realizado pela equipe ainda.</p>";
                 return;
             }
-            
             let feedItems = [];
-            snapshot.forEach(childSnapshot => {
-                feedItems.push({
-                    id: childSnapshot.key,
-                    data: childSnapshot.val()
-                });
-            });
-
-            feedItems.reverse().forEach(item => {
-                const card = FeedPanel.createFeedCard(
-                    item.id,
-                    item.data,
-                    item.data.ownerId
-                );
-                feedList.appendChild(card);
-            });
+            snapshot.forEach(c => feedItems.push({ id: c.key, data: c.val() }));
+            feedItems.reverse().forEach(item => feedList.appendChild(FeedPanel.createFeedCard(item.id, item.data, item.data.ownerId)));
         });
     },
     
-    // (V3.2): Card do Feed com listeners no Avatar/Nome
     createFeedCard: (id, data, ownerId) => {
         const el = document.createElement('div');
         el.className = 'workout-card';
         
-        // V3.0: Pega o atleta do cache de /users
         const athleteData = AppPrincipal.state.userCache[ownerId];
-        
         const athleteName = athleteData?.name || data.ownerName || "Atleta";
-        // V3.0: Define o avatar
         const athleteAvatar = athleteData?.photoUrl || 'https://placehold.co/150x150/4169E1/FFFFFF?text=LR';
         
         el.innerHTML = `
             <div class="workout-card-header">
                 <img src="${athleteAvatar}" alt="Avatar de ${athleteName}" class="athlete-avatar">
-                
                 <span class="athlete-name">${athleteName}</span>
                 <div>
                     <span class="date">${data.date}</span>
@@ -909,328 +938,53 @@ const FeedPanel = {
             </div>
         `;
 
-        // (V3.2): Adiciona listeners para abrir o modal de visualização de perfil
-        const avatarEl = el.querySelector('.athlete-avatar');
-        const nameEl = el.querySelector('.athlete-name');
-
-        const openProfile = (e) => {
-            e.stopPropagation(); // Impede o modal de feedback de abrir
-            AppPrincipal.openViewProfileModal(ownerId);
-        };
-
-        avatarEl.addEventListener('click', openProfile);
-        nameEl.addEventListener('click', openProfile);
+        const openProfile = (e) => { e.stopPropagation(); AppPrincipal.openViewProfileModal(ownerId); };
+        el.querySelector('.athlete-avatar').addEventListener('click', openProfile);
+        el.querySelector('.athlete-name').addEventListener('click', openProfile);
         
-        // Abre o Modal de Feedback (clique no card)
         el.addEventListener('click', (e) => {
-             // Não abre se clicar no like (botões são tratados) ou nos elementos de perfil (tratados por stopPropagation)
-             // TAmbém evita clicar no link do mapa
-             if (!e.target.closest('button') && !e.target.closest('a')) { 
-                AppPrincipal.openFeedbackModal(id, ownerId, data.title);
-             }
+             if (!e.target.closest('button') && !e.target.closest('a')) AppPrincipal.openFeedbackModal(id, ownerId, data.title);
         });
 
-        // Carrega Likes e Comentários
         FeedPanel.loadWorkoutStats(el, id, ownerId);
-        
         return el;
     },
     
-    // Carrega status (likes/comentários) de um card (V3.3)
     loadWorkoutStats: (cardElement, workoutId, ownerId) => {
         const likeBtn = cardElement.querySelector('.btn-like');
         const likeCount = cardElement.querySelector('.like-count');
         const commentCount = cardElement.querySelector('.comment-count');
-
         const isOwner = (FeedPanel.state.currentUser.uid === ownerId);
 
         const likesRef = FeedPanel.state.db.ref(`workoutLikes/${workoutId}`);
         const commentsRef = FeedPanel.state.db.ref(`workoutComments/${workoutId}`);
         
-        const likesListenerKey = `feed_likes_${workoutId}`;
-        const commentsListenerKey = `feed_comments_${workoutId}`;
-        
-        const likesListener = likesRef.on('value', snapshot => {
+        AppPrincipal.state.listeners[`feed_likes_${workoutId}`] = likesRef.on('value', snapshot => {
             const count = snapshot.numChildren();
             likeCount.textContent = count;
-            
-            if (snapshot.hasChild(FeedPanel.state.currentUser.uid)) {
-                likeBtn.classList.add('liked');
-            } else {
-                likeBtn.classList.remove('liked');
-            }
-
-            if (isOwner) {
-                likeBtn.disabled = true;
-            }
+            if (snapshot.hasChild(FeedPanel.state.currentUser.uid)) likeBtn.classList.add('liked');
+            else likeBtn.classList.remove('liked');
+            if (isOwner) likeBtn.disabled = true;
 
             if (count > 0) {
                 likeCount.classList.add('like-count-btn');
-                likeCount.onclick = (e) => {
-                    e.stopPropagation();
-                    AppPrincipal.openWhoLikedModal(workoutId);
-                };
+                likeCount.onclick = (e) => { e.stopPropagation(); AppPrincipal.openWhoLikedModal(workoutId); };
             } else {
                 likeCount.classList.remove('like-count-btn');
                 likeCount.onclick = null;
             }
         });
         
-        const commentsListener = commentsRef.on('value', snapshot => {
-            commentCount.textContent = snapshot.numChildren();
-        });
+        AppPrincipal.state.listeners[`feed_comments_${workoutId}`] = commentsRef.on('value', snapshot => commentCount.textContent = snapshot.numChildren());
 
-        // Ação de Curtir
         if (!isOwner) {
             likeBtn.addEventListener('click', (e) => {
-                e.stopPropagation(); // Impede o modal de abrir
+                e.stopPropagation(); 
                 const myLikeRef = likesRef.child(FeedPanel.state.currentUser.uid);
                 myLikeRef.once('value', snapshot => {
-                    if (snapshot.exists()) {
-                        myLikeRef.remove(); // Descurtir
-                    } else {
-                        myLikeRef.set(true); // Curtir
-                    }
+                    if (snapshot.exists()) myLikeRef.remove(); else myLikeRef.set(true);
                 });
             });
         }
-        
-        AppPrincipal.state.listeners[likesListenerKey] = likesListener;
-        AppPrincipal.state.listeners[commentsListenerKey] = commentsListener;
     }
 };
-
-// ===================================================================
-// 6. FINANCE PANEL (MÓDULO NOVO - ADICIONADO AO FINAL)
-// ===================================================================
-const FinancePanel = {
-    state: { items: [] },
-    
-    // Inicializa o módulo financeiro
-    init: (user, db) => {
-        console.log("FinancePanel: Init");
-        FinancePanel.state.db = db;
-        FinancePanel.state.user = user;
-        
-        // Carrega a aba inicial
-        FinancePanel.switchTab('receber');
-        
-        // Ouve o saldo geral
-        const basePath = `data/${user.uid}/finance`;
-        db.ref(basePath).on('value', s => {
-            let rec=0, exp=0;
-            if(s.exists()) {
-                const d = s.val();
-                if(d.receivables) Object.values(d.receivables).forEach(r => rec += parseFloat(r.amount||0));
-                if(d.expenses) Object.values(d.expenses).forEach(e => exp += parseFloat(e.amount||0));
-            }
-            const elRec = document.getElementById('fin-total-recebido');
-            const elExp = document.getElementById('fin-total-pago');
-            const elSal = document.getElementById('fin-saldo');
-            
-            if(elRec) elRec.textContent = `R$ ${rec.toFixed(2)}`;
-            if(elExp) elExp.textContent = `R$ ${exp.toFixed(2)}`;
-            if(elSal) {
-                const saldo = rec - exp;
-                elSaldo.textContent = `R$ ${saldo.toFixed(2)}`;
-                elSaldo.style.color = saldo >= 0 ? 'var(--primary-color)' : 'var(--danger-color)';
-            }
-        });
-        
-        // Garante que o formulário tenha o listener correto
-        const form = document.getElementById('finance-form');
-        if(form) {
-            const newForm = form.cloneNode(true);
-            form.parentNode.replaceChild(newForm, form);
-            newForm.addEventListener('submit', FinancePanel.handleSaveTransaction);
-        }
-    },
-
-    // Alterna Abas
-    switchTab: (tab) => {
-        const div = document.getElementById('fin-content-area');
-        if(!div) return;
-        div.innerHTML = ""; 
-        
-        // Botão Novo
-        const controls = document.createElement('div');
-        controls.style.marginBottom = "15px";
-        controls.style.display = "flex";
-        controls.style.justifyContent = "flex-end";
-        
-        const btn = document.createElement('button');
-        btn.className = "btn btn-primary btn-small";
-        
-        if (tab === 'estoque') btn.innerHTML = "<i class='bx bx-plus'></i> Novo Produto";
-        else if (tab === 'receber') btn.innerHTML = "<i class='bx bx-plus'></i> Nova Receita";
-        else btn.innerHTML = "<i class='bx bx-plus'></i> Nova Despesa";
-        
-        btn.onclick = () => FinancePanel.openModal(tab);
-        controls.appendChild(btn);
-        div.appendChild(controls);
-        
-        // Lista
-        const listDiv = document.createElement('div');
-        listDiv.id = "fin-list";
-        div.appendChild(listDiv);
-        
-        const basePath = `data/${FinancePanel.state.user.uid}/finance`;
-        const refPath = tab === 'estoque' ? `${basePath}/stock` : (tab === 'receber' ? `${basePath}/receivables` : `${basePath}/expenses`);
-        
-        FinancePanel.state.db.ref(refPath).on('value', s => {
-            listDiv.innerHTML = "";
-            if(!s.exists()) { 
-                listDiv.innerHTML = "<p style='text-align:center; color:#777; padding:20px;'>Nenhum registro encontrado.</p>"; 
-                return; 
-            }
-            
-            s.forEach(c => {
-                const i = c.val();
-                const item = document.createElement('div');
-                item.style.background="white"; 
-                item.style.padding="12px"; 
-                item.style.border="1px solid #eee"; 
-                item.style.marginBottom="8px";
-                item.style.borderRadius="6px";
-                item.style.display="flex";
-                item.style.justifyContent="space-between";
-                item.style.alignItems="center";
-                
-                const val = parseFloat(i.amount || i.price || 0).toFixed(2);
-                let detail = "";
-                if (i.date) {
-                    const parts = i.date.split('-');
-                    detail = `${parts[2]}/${parts[1]}/${parts[0]}`;
-                } else if (i.quantity !== undefined) {
-                    detail = `Estoque: ${i.quantity} un`;
-                }
-                
-                let color = "#333";
-                if(tab === 'receber') color = "var(--success-color)";
-                if(tab === 'pagar') color = "var(--danger-color)";
-
-                item.innerHTML = `
-                    <div>
-                        <div style="font-weight:bold; font-size:1rem;">${i.description||i.name}</div>
-                        <div style="font-size:0.85rem; color:#777;">${detail}</div>
-                    </div>
-                    <div style="text-align:right;">
-                        <div style="font-weight:bold; font-size:1.1rem; color:${color};">R$ ${val}</div>
-                        <button class="btn-del-fin" style="color:red; border:none; background:none; cursor:pointer; font-size:1.2rem; margin-top:5px;">
-                            <i class='bx bx-trash'></i>
-                        </button>
-                    </div>
-                `;
-                
-                item.querySelector('.btn-del-fin').onclick = () => {
-                    if(confirm("Excluir este item?")) FinancePanel.state.db.ref(`${refPath}/${c.key}`).remove();
-                };
-                listDiv.appendChild(item);
-            });
-        });
-    },
-
-    // Modal de Cadastro
-    openModal: (type) => {
-        const modal = document.getElementById('finance-modal');
-        if(!modal) return;
-        modal.classList.remove('hidden');
-        
-        // Limpa form
-        const form = document.getElementById('finance-form');
-        form.reset();
-
-        document.getElementById('fin-type').value = type;
-        const title = document.getElementById('finance-modal-title');
-        
-        const stockArea = document.getElementById('fin-stock-area');
-        const athleteGroup = document.getElementById('fin-athlete-group');
-        const dateGroup = document.getElementById('fin-date-group');
-        
-        // Reset visual
-        if(stockArea) stockArea.classList.add('hidden');
-        if(athleteGroup) athleteGroup.classList.add('hidden');
-        if(dateGroup) dateGroup.classList.remove('hidden');
-        
-        if (type === 'estoque') {
-            title.textContent = "Novo Produto";
-            if(dateGroup) dateGroup.classList.add('hidden');
-            if(stockArea) {
-                stockArea.classList.remove('hidden');
-                const prodSel = document.getElementById('fin-product-select');
-                if(prodSel) prodSel.parentElement.classList.add('hidden'); // Esconde select, mostra só input se fosse novo
-            }
-        } else if (type === 'receber') {
-            title.textContent = "Nova Receita";
-            if(stockArea) stockArea.classList.remove('hidden');
-            if(athleteGroup) athleteGroup.classList.remove('hidden');
-            
-            const prodSel = document.getElementById('fin-product-select');
-            if(prodSel) {
-                prodSel.parentElement.classList.remove('hidden');
-                prodSel.innerHTML = "<option value=''>Apenas Cobrança (Sem produto)</option>";
-                
-                // Carrega produtos do estoque
-                const uid = FinancePanel.state.user.uid;
-                FinancePanel.state.db.ref(`data/${uid}/finance/stock`).once('value', s => {
-                    s.forEach(c => {
-                         const opt = document.createElement('option');
-                         opt.value = c.key;
-                         opt.text = `${c.val().name} (Qtd: ${c.val().quantity})`;
-                         prodSel.appendChild(opt);
-                    });
-                });
-            }
-            
-            const athSel = document.getElementById('fin-athlete-select');
-            if(athSel) {
-                athSel.innerHTML = "<option value=''>Avulso</option>";
-                FinancePanel.state.db.ref('users').once('value', s => {
-                    s.forEach(c => { 
-                        if(c.val().role !== 'admin') {
-                            const opt = document.createElement('option');
-                            opt.value = c.key;
-                            opt.text = c.val().name;
-                            athSel.appendChild(opt);
-                        }
-                    });
-                });
-            }
-        } else {
-            title.textContent = "Nova Despesa";
-        }
-    },
-
-    // Salvar
-    handleSaveTransaction: (e) => {
-        e.preventDefault();
-        const type = document.getElementById('fin-type').value;
-        const desc = document.getElementById('fin-desc').value;
-        const val = parseFloat(document.getElementById('fin-value').value);
-        const date = document.getElementById('fin-date').value;
-        const uid = FinancePanel.state.user.uid;
-        const basePath = `data/${uid}/finance`;
-
-        if (type === 'estoque') {
-            const qty = parseFloat(document.getElementById('fin-qty').value || 0);
-            FinancePanel.state.db.ref(`${basePath}/stock`).push({ name: desc, price: val, quantity: qty });
-        } else {
-            const prodId = document.getElementById('fin-product-select').value;
-            const qty = parseFloat(document.getElementById('fin-qty').value || 0);
-            
-            // Baixa de estoque
-            if (type === 'receber' && prodId) {
-                FinancePanel.state.db.ref(`${basePath}/stock/${prodId}/quantity`).transaction(current => (current || 0) - qty);
-            }
-            
-            const path = type === 'receber' ? 'receivables' : 'expenses';
-            FinancePanel.state.db.ref(`${basePath}/${path}`).push({
-                description: desc, amount: val, date: date, 
-                athleteId: document.getElementById('fin-athlete-select').value || null
-            });
-        }
-        document.getElementById('finance-modal').classList.add('hidden');
-    }
-};
-
-window.panels = { init: () => {}, cleanup: () => { if(AdminPanel.state.db) AdminPanel.state.db.ref().off(); } };
