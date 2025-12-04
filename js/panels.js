@@ -1,5 +1,5 @@
 /* =================================================================== */
-/* ARQUIVO DE MÓDULOS (V6.2 - FINAL: RESTAURAÇÃO QUERY IA + FEED V2)
+/* ARQUIVO DE MÓDULOS (V6.3 - FINAL STABLE: CORE DATA VISIBILITY FIX)
 /* =================================================================== */
 
 // ===================================================================
@@ -10,7 +10,7 @@ const AdminPanel = {
     elements: {},
 
     init: (user, db) => {
-        console.log("AdminPanel V6.2: Inicializado.");
+        console.log("AdminPanel V6.3: Inicializado.");
         AdminPanel.state = { db, currentUser: user, selectedAthleteId: null, athletes: {} };
 
         AdminPanel.elements = {
@@ -52,6 +52,7 @@ const AdminPanel = {
         if(AdminPanel.elements.tabKpisBtn) 
             AdminPanel.elements.tabKpisBtn.addEventListener('click', () => AdminPanel.switchTab('kpis'));
         
+        // Listener Botão IA
         if (AdminPanel.elements.analyzeAthleteBtnIa) {
             AdminPanel.elements.analyzeAthleteBtnIa.addEventListener('click', AdminPanel.handleAnalyzeAthleteIA);
         }
@@ -259,17 +260,18 @@ const AdminPanel = {
         });
     },
     
-    // CORREÇÃO KPI (RESTAURAÇÃO V2): Usa orderByChild('analysisDate')
+    // CORREÇÃO CRÍTICA IA: 
+    // Usar limitToLast(50) puro garante que os itens apareçam pela ordem de inserção (Keys do Firebase),
+    // ignorando problemas de data mal formatada ou índices ausentes.
     loadIaHistory: (athleteId) => {
         const { iaHistoryList } = AdminPanel.elements;
         if (!iaHistoryList) return; 
         iaHistoryList.innerHTML = "<p>Carregando histórico...</p>";
         
         const historyRef = AdminPanel.state.db.ref(`iaAnalysisHistory/${athleteId}`);
-        // Restaura a query original que funcionava (ordena por data)
-        const query = historyRef.orderByChild('analysisDate').limitToLast(50);
+        const query = historyRef.limitToLast(50);
         
-        // Garante que o listener antigo seja removido corretamente
+        // Garante a remoção do listener antigo para evitar duplicações
         if (AppPrincipal.state.listeners['adminIaHistory']) {
             if(typeof AppPrincipal.state.listeners['adminIaHistory'].off === 'function') {
                 AppPrincipal.state.listeners['adminIaHistory'].off();
@@ -294,64 +296,46 @@ const AdminPanel = {
         });
     },
 
-    handleAddWorkout: (e) => {
-        e.preventDefault();
+    handleAnalyzeAthleteIA: async () => {
         const { selectedAthleteId } = AdminPanel.state;
-        const { addWorkoutForm } = AdminPanel.elements;
-        
         if (!selectedAthleteId) return alert("Selecione um atleta.");
-
-        const date = addWorkoutForm.querySelector('#workout-date').value;
-        const title = addWorkoutForm.querySelector('#workout-title').value;
         
-        if (!date || !title) return alert("Data e Título são obrigatórios.");
-
-        const modalidade = addWorkoutForm.querySelector('#workout-modalidade').value;
-        const tipoTreino = addWorkoutForm.querySelector('#workout-tipo-treino').value;
-        const intensidade = addWorkoutForm.querySelector('#workout-intensidade').value;
-        const percurso = addWorkoutForm.querySelector('#workout-percurso').value;
+        // TRAVA DE SEGURANÇA (FIX: "Nada acontece")
+        const athleteData = AdminPanel.state.athletes[selectedAthleteId];
+        if (!athleteData) return alert("Erro: Dados do atleta não carregados. Recarregue a página.");
         
-        const distancia = addWorkoutForm.querySelector('#workout-distancia').value.trim();
-        const tempo = addWorkoutForm.querySelector('#workout-tempo').value.trim();
-        const pace = addWorkoutForm.querySelector('#workout-pace').value.trim();
-        const velocidade = addWorkoutForm.querySelector('#workout-velocidade').value.trim();
-        const observacoes = addWorkoutForm.querySelector('#workout-observacoes').value.trim();
+        AppPrincipal.openIaAnalysisModal(); 
+        const iaAnalysisOutput = AppPrincipal.elements.iaAnalysisOutput;
+        const saveBtn = AppPrincipal.elements.saveIaAnalysisBtn;
+        
+        iaAnalysisOutput.textContent = "Coletando dados do atleta...";
+        saveBtn.classList.add('hidden'); 
 
-        let description = `[${modalidade}] - [${tipoTreino}]\n`;
-        description += `Intensidade: ${intensidade}\n`;
-        description += `Percurso: ${percurso}\n`;
-        description += `--- \n`;
-        if (distancia) description += `Distância: ${distancia}\n`;
-        if (tempo) description += `Tempo: ${tempo}\n`;
-        if (pace) description += `Pace: ${pace}\n`;
-        if (velocidade) description += `Velocidade: ${velocidade}\n`;
-        if (observacoes) description += `--- \nObservações:\n${observacoes}`;
+        try {
+            const athleteName = athleteData.name;
+            const dataRef = AdminPanel.state.db.ref(`data/${selectedAthleteId}/workouts`);
+            const snapshot = await dataRef.orderByChild('date').limitToLast(10).once('value');
+            
+            if (!snapshot.exists()) throw new Error("Nenhum dado de treino encontrado.");
+            const workoutData = snapshot.val();
+            
+            const prompt = `ATUE COMO: Coach de Corrida. ATLETA: ${athleteName}. DADOS: ${JSON.stringify(workoutData, null, 2)}. Crie um relatório breve e direto sobre consistência e performance.`;
+            
+            iaAnalysisOutput.textContent = "Gerando análise (Gemini)...";
+            const analysisResult = await AppPrincipal.callGeminiTextAPI(prompt);
+            
+            iaAnalysisOutput.textContent = analysisResult;
+            AppPrincipal.state.currentAnalysisData = {
+                analysisDate: new Date().toISOString(),
+                coachUid: AdminPanel.state.currentUser.uid,
+                prompt: prompt,
+                analysisResult: analysisResult
+            };
+            saveBtn.classList.remove('hidden'); 
 
-        const workoutData = {
-            date: date,
-            title: title,
-            description: description,
-            structure: {
-                modalidade, tipoTreino, intensidade, percurso, distancia, tempo, pace, velocidade
-            },
-            createdBy: AdminPanel.state.currentUser.uid,
-            createdAt: new Date().toISOString(),
-            status: "planejado",
-            feedback: "",
-            imageUrl: null,
-            stravaData: null
-        };
-
-        AdminPanel.state.db.ref(`data/${selectedAthleteId}/workouts`).push(workoutData)
-            .then(() => {
-                addWorkoutForm.querySelector('#workout-distancia').value = "";
-                addWorkoutForm.querySelector('#workout-tempo').value = "";
-                addWorkoutForm.querySelector('#workout-pace').value = "";
-                addWorkoutForm.querySelector('#workout-velocidade').value = "";
-                addWorkoutForm.querySelector('#workout-observacoes').value = "";
-                addWorkoutForm.querySelector('#workout-title').value = "";
-            })
-            .catch(err => alert("Falha ao salvar: " + err.message));
+        } catch (err) {
+            iaAnalysisOutput.textContent = `ERRO: ${err.message}`;
+        }
     },
     
     createWorkoutCard: (id, data, athleteId) => {
@@ -400,7 +384,6 @@ const AdminPanel = {
     createIaHistoryCard: (id, data) => {
         const el = document.createElement('div');
         el.className = 'workout-card';
-        // Formatação de data robusta
         let dateStr = "Data desconhecida";
         try {
             if (data.analysisDate) {
