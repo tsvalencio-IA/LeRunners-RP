@@ -13,7 +13,7 @@
     <link href="https://cdn.jsdelivr.net/npm/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet">
     <meta name="theme-color" content="#00008B">
     <style>
-        /* Estilos inline específicos para o Módulo Financeiro para não quebrar o CSS global */
+        /* Estilos Específicos do Módulo Financeiro (Aditivo) */
         .finance-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
         .finance-card { background: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); text-align: center; border-left: 5px solid #ccc; }
         .finance-card.receita { border-color: var(--success-color); }
@@ -21,15 +21,14 @@
         .finance-card.saldo { border-color: var(--primary-color); }
         .finance-card h3 { font-size: 0.9rem; color: #666; margin-bottom: 0.5rem; }
         .finance-card p { font-size: 1.8rem; font-weight: bold; color: #333; margin: 0; }
-        .finance-actions { margin-bottom: 1.5rem; display: flex; gap: 1rem; flex-wrap: wrap; }
+        
         .table-responsive { overflow-x: auto; }
         .data-table { width: 100%; border-collapse: collapse; margin-top: 1rem; background: white; border-radius: 8px; overflow: hidden; }
         .data-table th, .data-table td { padding: 1rem; text-align: left; border-bottom: 1px solid #eee; }
         .data-table th { background-color: #f8f9fa; font-weight: 600; color: #444; }
-        .badge { padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.8rem; font-weight: bold; }
+        .badge { padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: bold; text-transform: uppercase; }
         .badge-success { background: #d4edda; color: #155724; }
         .badge-danger { background: #f8d7da; color: #721c24; }
-        .badge-warning { background: #fff3cd; color: #856404; }
     </style>
 </head>
 <body class="app-page">
@@ -47,7 +46,7 @@
                 <button id="nav-planilha-btn" class="btn btn-nav active">
                     <i class='bx bx-calendar'></i> <span>Planilha</span>
                 </button>
-                <!-- BOTÃO FINANCEIRO (NOVO) -->
+                <!-- BOTÃO FINANCEIRO (NOVO - Inicia Oculto) -->
                 <button id="nav-finance-btn" class="btn btn-nav hidden">
                     <i class='bx bx-dollar-circle'></i> <span>Financeiro</span>
                 </button>
@@ -127,7 +126,7 @@
                                 </div>
                 
                                 <fieldset class="workout-fieldset">
-                                    <legend>Detalhes do Treino</legend>
+                                    <legend>Detalhes do Treino (Estruturado)</legend>
                                     <div class="form-grid-2col">
                                         <div class="form-group">
                                             <label for="workout-modalidade">Modalidade</label>
@@ -228,7 +227,7 @@
         </div>
     </template>
 
-    <!-- NOVO TEMPLATE: FINANCEIRO (ADAPTADO DO DENT-IA) -->
+    <!-- NOVO TEMPLATE: FINANCEIRO (ADAPTADO) -->
     <template id="finance-panel-template">
         <div class="finance-dashboard">
             <h2><i class='bx bx-dollar-circle'></i> Gestão Financeira</h2>
@@ -597,7 +596,6 @@
             </div>
         </div>
     </div>
-    
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
@@ -609,7 +607,7 @@
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./service-worker.js') /* CORRIGIDO DE / PARA ./ */
+                navigator.serviceWorker.register('./service-worker.js')
                     .then(registration => {
                         console.log('Service Worker registrado com sucesso:', registration.scope);
                     })
