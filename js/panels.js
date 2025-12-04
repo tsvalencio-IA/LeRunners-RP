@@ -1,5 +1,5 @@
 /* =================================================================== */
-/* ARQUIVO DE MÓDULOS (V4.3 - RESTAURAÇÃO VISUAL V2 + FINANCEIRO/IA)
+/* ARQUIVO DE MÓDULOS (V4.4 - FINAL STABLE: VISUAL V2 + FEED BLINDADO)
 /* =================================================================== */
 
 // ===================================================================
@@ -10,7 +10,7 @@ const AdminPanel = {
     elements: {},
 
     init: (user, db) => {
-        console.log("AdminPanel V4.3: Inicializado.");
+        console.log("AdminPanel V4.4: Inicializado.");
         AdminPanel.state = { db, currentUser: user, selectedAthleteId: null, athletes: {} };
 
         AdminPanel.elements = {
@@ -41,9 +41,11 @@ const AdminPanel = {
         AdminPanel.elements.athleteSearch.addEventListener('input', AdminPanel.renderAthleteList);
         AdminPanel.elements.deleteAthleteBtn.addEventListener('click', AdminPanel.deleteAthlete);
         
-        // Listeners Abas
-        AdminPanel.elements.tabPrescreverBtn.addEventListener('click', () => AdminPanel.switchTab('prescrever'));
-        AdminPanel.elements.tabKpisBtn.addEventListener('click', () => AdminPanel.switchTab('kpis'));
+        // Listeners Abas (Com verificação de existência)
+        if(AdminPanel.elements.tabPrescreverBtn) 
+            AdminPanel.elements.tabPrescreverBtn.addEventListener('click', () => AdminPanel.switchTab('prescrever'));
+        if(AdminPanel.elements.tabKpisBtn) 
+            AdminPanel.elements.tabKpisBtn.addEventListener('click', () => AdminPanel.switchTab('kpis'));
         
         AdminPanel.elements.analyzeAthleteBtnIa.addEventListener('click', AdminPanel.handleAnalyzeAthleteIA);
         
@@ -57,11 +59,12 @@ const AdminPanel = {
         
         const isPrescrever = (tabName === 'prescrever');
         
-        tabPrescreverBtn.classList.toggle('active', isPrescrever);
-        adminTabPrescrever.classList.toggle('active', isPrescrever);
+        // Garante a troca de classes apenas se os elementos existirem
+        if(tabPrescreverBtn) tabPrescreverBtn.classList.toggle('active', isPrescrever);
+        if(adminTabPrescrever) adminTabPrescrever.classList.toggle('active', isPrescrever);
         
-        tabKpisBtn.classList.toggle('active', !isPrescrever);
-        adminTabKpis.classList.toggle('active', !isPrescrever);
+        if(tabKpisBtn) tabKpisBtn.classList.toggle('active', !isPrescrever);
+        if(adminTabKpis) adminTabKpis.classList.toggle('active', !isPrescrever);
     },
 
     loadPendingApprovals: () => {
@@ -223,7 +226,7 @@ const AdminPanel = {
         workoutsList.innerHTML = "<p>Carregando treinos...</p>";
         
         const workoutsRef = AdminPanel.state.db.ref(`data/${athleteId}/workouts`);
-        const query = workoutsRef.orderByChild('date'); // Ordena por data do treino
+        const query = workoutsRef.orderByChild('date'); 
         
         AppPrincipal.state.listeners['adminWorkouts'] = query;
         
@@ -233,12 +236,15 @@ const AdminPanel = {
                 workoutsList.innerHTML = "<p>Nenhum treino agendado.</p>";
                 return;
             }
-            // Firebase ordena Ascendente (Antigo -> Novo).
-            // Iteramos normalmente e usamos PREPEND para inverter na tela (Novo/Futuro -> Antigo).
+            
             snapshot.forEach(childSnapshot => {
-                const card = AdminPanel.createWorkoutCard(childSnapshot.key, childSnapshot.val(), athleteId);
-                // RESTAURAÇÃO: prepend coloca o último da lista (data futura) no topo.
-                workoutsList.prepend(card); 
+                try {
+                    const card = AdminPanel.createWorkoutCard(childSnapshot.key, childSnapshot.val(), athleteId);
+                    // Prepend para mostrar o mais longe (futuro) ou mais recente inserido no topo
+                    workoutsList.prepend(card); 
+                } catch (e) {
+                    console.error("Erro ao renderizar card de treino:", e);
+                }
             });
         });
     },
@@ -383,8 +389,11 @@ const AdminPanel = {
         return el;
     },
 
-    // RESTAURAÇÃO: Exibição completa de dados Strava + Splits (Tabela)
+    // RESTAURAÇÃO TOTAL V2: Exibição completa de dados Strava + Splits (Tabela) + Mapa
     createStravaDataDisplay: (stravaData) => {
+        // Fallback robusto se stravaData for nulo
+        if (!stravaData) return '';
+
         let mapLinkHtml = '';
         if (stravaData.mapLink) {
             mapLinkHtml = `<p style="margin-top:10px;"><a href="${stravaData.mapLink}" target="_blank" style="display:inline-block; padding:8px 12px; background:#fc4c02; color:white; border-radius:4px; text-decoration:none; font-weight:bold;">🗺️ Ver Mapa no Strava</a></p>`;
@@ -418,9 +427,9 @@ const AdminPanel = {
         }
 
         return `
-            <fieldset class="strava-data-display" style="border-color:#fc4c02;">
-                <legend><i class='bx bxl-strava'></i> Dados do Treino</legend>
-                <div style="font-family:monospace; font-size:1rem;">
+            <fieldset class="strava-data-display" style="border-color:#fc4c02; background:#fff5f0;">
+                <legend style="color:#fc4c02; font-weight:bold;"><i class='bx bxl-strava'></i> Dados do Treino</legend>
+                <div style="font-family:monospace; font-size:1rem; color:#333;">
                     <p><strong>Distância:</strong> ${stravaData.distancia || "N/A"}</p>
                     <p><strong>Tempo:</strong>     ${stravaData.tempo || "N/A"}</p>
                     <p><strong>Ritmo Médio:</strong> ${stravaData.ritmo || "N/A"}</p>
@@ -472,6 +481,44 @@ const AdminPanel = {
                 });
             });
         }
+    },
+
+    handleAnalyzeAthleteIA: async () => {
+        const { selectedAthleteId } = AdminPanel.state;
+        if (!selectedAthleteId) return alert("Selecione um atleta.");
+        
+        AppPrincipal.openIaAnalysisModal(); 
+        const iaAnalysisOutput = AppPrincipal.elements.iaAnalysisOutput;
+        const saveBtn = AppPrincipal.elements.saveIaAnalysisBtn;
+        
+        iaAnalysisOutput.textContent = "Coletando dados do atleta...";
+        saveBtn.classList.add('hidden'); 
+
+        try {
+            const athleteName = AdminPanel.state.athletes[selectedAthleteId].name;
+            const dataRef = AdminPanel.state.db.ref(`data/${selectedAthleteId}/workouts`);
+            const snapshot = await dataRef.orderByChild('date').limitToLast(10).once('value');
+            
+            if (!snapshot.exists()) throw new Error("Nenhum dado de treino encontrado.");
+            const workoutData = snapshot.val();
+            
+            const prompt = `ATUE COMO: Coach de Corrida. ATLETA: ${athleteName}. DADOS: ${JSON.stringify(workoutData, null, 2)}. Crie um relatório breve e direto sobre consistência e performance.`;
+            
+            iaAnalysisOutput.textContent = "Gerando análise (Gemini)...";
+            const analysisResult = await AppPrincipal.callGeminiTextAPI(prompt);
+            
+            iaAnalysisOutput.textContent = analysisResult;
+            AppPrincipal.state.currentAnalysisData = {
+                analysisDate: new Date().toISOString(),
+                coachUid: AdminPanel.state.currentUser.uid,
+                prompt: prompt,
+                analysisResult: analysisResult
+            };
+            saveBtn.classList.remove('hidden'); 
+
+        } catch (err) {
+            iaAnalysisOutput.textContent = `ERRO: ${err.message}`;
+        }
     }
 };
 
@@ -483,7 +530,7 @@ const FinancePanel = {
     elements: {},
 
     init: (user, db) => {
-        console.log("FinancePanel V1.2: Inicializado com Correções de Saldo.");
+        console.log("FinancePanel V1.2: Inicializado.");
         FinancePanel.state = { db, currentUser: user, inventory: {}, transactions: [] };
         
         FinancePanel.elements = {
@@ -616,7 +663,7 @@ const FinancePanel = {
 
     updateSummary: () => {
         let recMonth = 0, despMonth = 0;
-        let totalSaldo = 0; // Saldo Vitalício
+        let totalSaldo = 0; 
         
         const now = new Date();
         const currentMonth = now.getMonth();
@@ -624,18 +671,14 @@ const FinancePanel = {
         
         FinancePanel.state.transactions.forEach(([key, t]) => {
             const val = parseFloat(t.amount);
-            const tDate = new Date(t.date); // Atenção: formato YYYY-MM-DD
-            
-            // CORREÇÃO: Saldo Total considera tudo
-            if (t.type === 'receita') totalSaldo += val;
-            else totalSaldo -= val;
-
-            // CORREÇÃO: Cards de Mês consideram Ano+Mês (GMT safe)
-            // Ajuste para evitar problema de fuso horário na data "YYYY-MM-DD"
-            // Criando data com hora meio-dia para garantir o dia correto
+            const tDate = new Date(t.date); 
+            // Corrige fuso horário simples
             const parts = t.date.split('-');
             const safeDate = new Date(parts[0], parts[1]-1, parts[2]); 
             
+            if (t.type === 'receita') totalSaldo += val;
+            else totalSaldo -= val;
+
             if (safeDate.getMonth() === currentMonth && safeDate.getFullYear() === currentYear) {
                 if (t.type === 'receita') recMonth += val;
                 else despMonth += val;
@@ -644,9 +687,7 @@ const FinancePanel = {
 
         FinancePanel.elements.totalReceita.textContent = `R$ ${recMonth.toFixed(2)}`;
         FinancePanel.elements.totalDespesa.textContent = `R$ ${despMonth.toFixed(2)}`;
-        // CORREÇÃO: Saldo agora mostra o Total Acumulado, não apenas do mês
         FinancePanel.elements.saldo.textContent = `R$ ${totalSaldo.toFixed(2)}`;
-        
         FinancePanel.elements.saldo.style.color = totalSaldo >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
     },
 
@@ -654,12 +695,10 @@ const FinancePanel = {
         const list = FinancePanel.elements.transactionsList;
         list.innerHTML = "";
         
-        // Ordenar por data decrescente
         const sorted = [...FinancePanel.state.transactions].sort((a,b) => new Date(b[1].date) - new Date(a[1].date));
 
         sorted.forEach(([key, t]) => {
             const tr = document.createElement('tr');
-            // Formatar data visualmente (PT-BR)
             const parts = t.date.split('-');
             const dateStr = `${parts[2]}/${parts[1]}/${parts[0]}`;
             
@@ -672,7 +711,6 @@ const FinancePanel = {
                 </td>
                 <td><button class="btn btn-danger btn-small delete-trans" data-key="${key}"><i class='bx bx-trash'></i></button></td>
             `;
-            
             tr.querySelector('.delete-trans').addEventListener('click', () => FinancePanel.deleteTransaction(key));
             list.appendChild(tr);
         });
@@ -795,7 +833,6 @@ const AtletaPanel = {
             }
             snapshot.forEach(childSnapshot => {
                 const card = AtletaPanel.createWorkoutCard(childSnapshot.key, childSnapshot.val(), athleteId);
-                // RESTAURAÇÃO: prepend coloca os treinos futuros no topo
                 workoutsList.prepend(card);
             });
         });
@@ -842,6 +879,8 @@ const AtletaPanel = {
     
     // RESTAURAÇÃO: Visualização Completa (Strava + Splits)
     createStravaDataDisplay: (stravaData) => {
+        if (!stravaData) return '';
+
         let mapLinkHtml = '';
         if (stravaData.mapLink) {
             mapLinkHtml = `<p style="margin-top:10px;"><a href="${stravaData.mapLink}" target="_blank" style="display:inline-block; padding:8px 12px; background:#fc4c02; color:white; border-radius:4px; text-decoration:none; font-weight:bold;">🗺️ Ver Mapa no Strava</a></p>`;
@@ -950,7 +989,6 @@ const FeedPanel = {
         feedList.innerHTML = "<p>Carregando feed...</p>";
         const feedRef = FeedPanel.state.db.ref('publicWorkouts');
         
-        // CORREÇÃO FEED: Removido orderByChild('date').
         // Usa limitToLast(20) na chave bruta, garantindo que os últimos INSERIDOS apareçam
         const query = feedRef.limitToLast(20);
         
@@ -964,7 +1002,18 @@ const FeedPanel = {
             }
             let feedItems = [];
             snapshot.forEach(c => feedItems.push({ id: c.key, data: c.val() }));
-            feedItems.reverse().forEach(item => feedList.appendChild(FeedPanel.createFeedCard(item.id, item.data, item.data.ownerId)));
+            
+            // Inverte para mostrar o mais recente em cima
+            feedItems.reverse().forEach(item => {
+                // BLINDAGEM CONTRA FALHAS NO FEED: Try-Catch dentro do loop
+                // Se um card falhar (dados corrompidos), ele é ignorado e o resto carrega
+                try {
+                    const card = FeedPanel.createFeedCard(item.id, item.data, item.data.ownerId);
+                    feedList.appendChild(card);
+                } catch (err) {
+                    console.error("Erro ao renderizar item do feed:", item.id, err);
+                }
+            });
         });
     },
     
