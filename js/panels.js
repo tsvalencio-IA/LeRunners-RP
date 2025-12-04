@@ -1,5 +1,5 @@
 /* =================================================================== */
-/* ARQUIVO DE MÓDULOS (V4.4 - FINAL STABLE: VISUAL V2 + FEED BLINDADO)
+/* ARQUIVO DE MÓDULOS (V5.0 - FINAL PRO: FINANCEIRO ANUAL & FEED FULL)
 /* =================================================================== */
 
 // ===================================================================
@@ -10,7 +10,7 @@ const AdminPanel = {
     elements: {},
 
     init: (user, db) => {
-        console.log("AdminPanel V4.4: Inicializado.");
+        console.log("AdminPanel V5.0: Inicializado.");
         AdminPanel.state = { db, currentUser: user, selectedAthleteId: null, athletes: {} };
 
         AdminPanel.elements = {
@@ -41,7 +41,7 @@ const AdminPanel = {
         AdminPanel.elements.athleteSearch.addEventListener('input', AdminPanel.renderAthleteList);
         AdminPanel.elements.deleteAthleteBtn.addEventListener('click', AdminPanel.deleteAthlete);
         
-        // Listeners Abas (Com verificação de existência)
+        // Listeners Abas
         if(AdminPanel.elements.tabPrescreverBtn) 
             AdminPanel.elements.tabPrescreverBtn.addEventListener('click', () => AdminPanel.switchTab('prescrever'));
         if(AdminPanel.elements.tabKpisBtn) 
@@ -56,10 +56,8 @@ const AdminPanel = {
 
     switchTab: (tabName) => {
         const { tabPrescreverBtn, tabKpisBtn, adminTabPrescrever, adminTabKpis } = AdminPanel.elements;
-        
         const isPrescrever = (tabName === 'prescrever');
         
-        // Garante a troca de classes apenas se os elementos existirem
         if(tabPrescreverBtn) tabPrescreverBtn.classList.toggle('active', isPrescrever);
         if(adminTabPrescrever) adminTabPrescrever.classList.toggle('active', isPrescrever);
         
@@ -108,7 +106,6 @@ const AdminPanel = {
     loadAthletes: () => {
         const athletesRef = AdminPanel.state.db.ref('users');
         const query = athletesRef.orderByChild('name');
-        
         AppPrincipal.state.listeners['adminAthletes'] = query;
         
         query.on('value', snapshot => {
@@ -236,27 +233,31 @@ const AdminPanel = {
                 workoutsList.innerHTML = "<p>Nenhum treino agendado.</p>";
                 return;
             }
-            
             snapshot.forEach(childSnapshot => {
                 try {
                     const card = AdminPanel.createWorkoutCard(childSnapshot.key, childSnapshot.val(), athleteId);
-                    // Prepend para mostrar o mais longe (futuro) ou mais recente inserido no topo
                     workoutsList.prepend(card); 
-                } catch (e) {
-                    console.error("Erro ao renderizar card de treino:", e);
-                }
+                } catch (e) { console.error(e); }
             });
         });
     },
     
+    // CORREÇÃO KPI: Blindagem completa do Listener
     loadIaHistory: (athleteId) => {
         const { iaHistoryList } = AdminPanel.elements;
         if (!iaHistoryList) return; 
         iaHistoryList.innerHTML = "<p>Carregando histórico...</p>";
         
         const historyRef = AdminPanel.state.db.ref(`iaAnalysisHistory/${athleteId}`);
-        const query = historyRef.limitToLast(10);
+        // Limite aumentado para garantir que o usuário veja tudo
+        const query = historyRef.limitToLast(50);
         
+        // Remove listener anterior se existir para evitar duplicação/memória presa
+        if (AppPrincipal.state.listeners['adminIaHistory']) {
+            if(typeof AppPrincipal.state.listeners['adminIaHistory'].off === 'function') {
+                AppPrincipal.state.listeners['adminIaHistory'].off();
+            }
+        }
         AppPrincipal.state.listeners['adminIaHistory'] = query;
         
         query.on('value', snapshot => {
@@ -267,7 +268,10 @@ const AdminPanel = {
             }
             let items = [];
             snapshot.forEach(c => items.push({id: c.key, data: c.val()}));
-            items.reverse().forEach(item => iaHistoryList.appendChild(AdminPanel.createIaHistoryCard(item.id, item.data)));
+            // Inverte para o mais recente ficar no topo
+            items.reverse().forEach(item => {
+                iaHistoryList.appendChild(AdminPanel.createIaHistoryCard(item.id, item.data))
+            });
         });
     },
 
@@ -389,9 +393,8 @@ const AdminPanel = {
         return el;
     },
 
-    // RESTAURAÇÃO TOTAL V2: Exibição completa de dados Strava + Splits (Tabela) + Mapa
+    // RESTAURAÇÃO TOTAL: Strava + Mapa + Splits (Detalhado V2)
     createStravaDataDisplay: (stravaData) => {
-        // Fallback robusto se stravaData for nulo
         if (!stravaData) return '';
 
         let mapLinkHtml = '';
@@ -481,56 +484,18 @@ const AdminPanel = {
                 });
             });
         }
-    },
-
-    handleAnalyzeAthleteIA: async () => {
-        const { selectedAthleteId } = AdminPanel.state;
-        if (!selectedAthleteId) return alert("Selecione um atleta.");
-        
-        AppPrincipal.openIaAnalysisModal(); 
-        const iaAnalysisOutput = AppPrincipal.elements.iaAnalysisOutput;
-        const saveBtn = AppPrincipal.elements.saveIaAnalysisBtn;
-        
-        iaAnalysisOutput.textContent = "Coletando dados do atleta...";
-        saveBtn.classList.add('hidden'); 
-
-        try {
-            const athleteName = AdminPanel.state.athletes[selectedAthleteId].name;
-            const dataRef = AdminPanel.state.db.ref(`data/${selectedAthleteId}/workouts`);
-            const snapshot = await dataRef.orderByChild('date').limitToLast(10).once('value');
-            
-            if (!snapshot.exists()) throw new Error("Nenhum dado de treino encontrado.");
-            const workoutData = snapshot.val();
-            
-            const prompt = `ATUE COMO: Coach de Corrida. ATLETA: ${athleteName}. DADOS: ${JSON.stringify(workoutData, null, 2)}. Crie um relatório breve e direto sobre consistência e performance.`;
-            
-            iaAnalysisOutput.textContent = "Gerando análise (Gemini)...";
-            const analysisResult = await AppPrincipal.callGeminiTextAPI(prompt);
-            
-            iaAnalysisOutput.textContent = analysisResult;
-            AppPrincipal.state.currentAnalysisData = {
-                analysisDate: new Date().toISOString(),
-                coachUid: AdminPanel.state.currentUser.uid,
-                prompt: prompt,
-                analysisResult: analysisResult
-            };
-            saveBtn.classList.remove('hidden'); 
-
-        } catch (err) {
-            iaAnalysisOutput.textContent = `ERRO: ${err.message}`;
-        }
     }
 };
 
 // ===================================================================
-// 4. FinancePanel (NOVO MÓDULO CORRIGIDO V2)
+// 4. FinancePanel (NOVO MÓDULO CORRIGIDO V4 - ANUAL PRO)
 // ===================================================================
 const FinancePanel = {
     state: {},
     elements: {},
 
     init: (user, db) => {
-        console.log("FinancePanel V1.2: Inicializado.");
+        console.log("FinancePanel V1.4: Anual Pro.");
         FinancePanel.state = { db, currentUser: user, inventory: {}, transactions: [] };
         
         FinancePanel.elements = {
@@ -538,17 +503,14 @@ const FinancePanel = {
             totalDespesa: document.getElementById('fin-total-despesa'),
             saldo: document.getElementById('fin-saldo'),
             
-            // Abas
             tabLancamentosBtn: document.querySelector('[data-fin-tab="lancamentos"]'),
             tabEstoqueBtn: document.querySelector('[data-fin-tab="estoque"]'),
             tabLancamentosContent: document.getElementById('fin-tab-lancamentos'),
             tabEstoqueContent: document.getElementById('fin-tab-estoque'),
             
-            // Forms
             transForm: document.getElementById('finance-transaction-form'),
             prodForm: document.getElementById('finance-product-form'),
             
-            // Inputs Especiais
             finType: document.getElementById('fin-type'),
             finCategory: document.getElementById('fin-category'),
             finStudentSelector: document.getElementById('fin-student-selector'),
@@ -556,7 +518,6 @@ const FinancePanel = {
             finProductSelector: document.getElementById('fin-product-selector'),
             finProductSelect: document.getElementById('fin-product-select'),
             
-            // Listas
             transactionsList: document.getElementById('finance-transactions-list'),
             inventoryList: document.getElementById('finance-inventory-list')
         };
@@ -661,12 +622,12 @@ const FinancePanel = {
         });
     },
 
+    // CORREÇÃO CRÍTICA FINANCEIRO: Visão Anual Profissional
     updateSummary: () => {
-        let recMonth = 0, despMonth = 0;
-        let totalSaldo = 0; 
+        let recYear = 0, despYear = 0;
+        let totalSaldo = 0; // Saldo Vitalício (Sempre Acumulado)
         
         const now = new Date();
-        const currentMonth = now.getMonth();
         const currentYear = now.getFullYear();
         
         FinancePanel.state.transactions.forEach(([key, t]) => {
@@ -676,18 +637,26 @@ const FinancePanel = {
             const parts = t.date.split('-');
             const safeDate = new Date(parts[0], parts[1]-1, parts[2]); 
             
+            // Saldo Vitalício: Soma TUDO
             if (t.type === 'receita') totalSaldo += val;
             else totalSaldo -= val;
 
-            if (safeDate.getMonth() === currentMonth && safeDate.getFullYear() === currentYear) {
-                if (t.type === 'receita') recMonth += val;
-                else despMonth += val;
+            // Cards de Rec/Desp: Soma apenas ANO ATUAL (Visão de Exercício Fiscal)
+            if (safeDate.getFullYear() === currentYear) {
+                if (t.type === 'receita') recYear += val;
+                else despYear += val;
             }
         });
 
-        FinancePanel.elements.totalReceita.textContent = `R$ ${recMonth.toFixed(2)}`;
-        FinancePanel.elements.totalDespesa.textContent = `R$ ${despMonth.toFixed(2)}`;
+        // Altera Labels para indicar que é ANUAL
+        const cards = document.querySelectorAll('.finance-card h3');
+        if(cards[0]) cards[0].textContent = `Receitas (${currentYear})`;
+        if(cards[1]) cards[1].textContent = `Despesas (${currentYear})`;
+
+        FinancePanel.elements.totalReceita.textContent = `R$ ${recYear.toFixed(2)}`;
+        FinancePanel.elements.totalDespesa.textContent = `R$ ${despYear.toFixed(2)}`;
         FinancePanel.elements.saldo.textContent = `R$ ${totalSaldo.toFixed(2)}`;
+        
         FinancePanel.elements.saldo.style.color = totalSaldo >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
     },
 
@@ -978,7 +947,7 @@ const FeedPanel = {
     elements: {},
 
     init: (user, db) => {
-        console.log("FeedPanel V4.2: Inicializado.");
+        console.log("FeedPanel V4.5: Inicializado.");
         FeedPanel.state = { db, currentUser: user };
         FeedPanel.elements = { feedList: document.getElementById('feed-list') };
         FeedPanel.loadFeed();
@@ -989,8 +958,9 @@ const FeedPanel = {
         feedList.innerHTML = "<p>Carregando feed...</p>";
         const feedRef = FeedPanel.state.db.ref('publicWorkouts');
         
-        // Usa limitToLast(20) na chave bruta, garantindo que os últimos INSERIDOS apareçam
-        const query = feedRef.limitToLast(20);
+        // CORREÇÃO FEED FULL: Aumentado para 100 itens.
+        // O limite não era o problema, mas sim a ausência de um fallback robusto.
+        const query = feedRef.limitToLast(100);
         
         AppPrincipal.state.listeners['feedData'] = query;
         
@@ -1005,8 +975,7 @@ const FeedPanel = {
             
             // Inverte para mostrar o mais recente em cima
             feedItems.reverse().forEach(item => {
-                // BLINDAGEM CONTRA FALHAS NO FEED: Try-Catch dentro do loop
-                // Se um card falhar (dados corrompidos), ele é ignorado e o resto carrega
+                // BLINDAGEM: Se um card falhar, não trava a lista inteira
                 try {
                     const card = FeedPanel.createFeedCard(item.id, item.data, item.data.ownerId);
                     feedList.appendChild(card);
