@@ -1,5 +1,5 @@
 /* =================================================================== */
-/* ARQUIVO DE MÓDULOS (V6.0 - FINAL: FEED E IA PELA CHAVE DE INSERÇÃO)
+/* ARQUIVO DE MÓDULOS (V6.1 - FINAL: CORREÇÃO VISUAL KPI/IA + FEED V2)
 /* =================================================================== */
 
 // ===================================================================
@@ -10,7 +10,7 @@ const AdminPanel = {
     elements: {},
 
     init: (user, db) => {
-        console.log("AdminPanel V6.0: Inicializado.");
+        console.log("AdminPanel V6.1: Inicializado.");
         AdminPanel.state = { db, currentUser: user, selectedAthleteId: null, athletes: {} };
 
         AdminPanel.elements = {
@@ -52,7 +52,6 @@ const AdminPanel = {
         if(AdminPanel.elements.tabKpisBtn) 
             AdminPanel.elements.tabKpisBtn.addEventListener('click', () => AdminPanel.switchTab('kpis'));
         
-        // CORREÇÃO BOTÃO IA: Listener direto e seguro
         if (AdminPanel.elements.analyzeAthleteBtnIa) {
             AdminPanel.elements.analyzeAthleteBtnIa.addEventListener('click', AdminPanel.handleAnalyzeAthleteIA);
         }
@@ -71,6 +70,11 @@ const AdminPanel = {
         
         if(tabKpisBtn) tabKpisBtn.classList.toggle('active', !isPrescrever);
         if(adminTabKpis) adminTabKpis.classList.toggle('active', !isPrescrever);
+        
+        // CORREÇÃO CRÍTICA: Se mudar para a aba KPIs, recarrega a lista para garantir atualização
+        if (!isPrescrever && AdminPanel.state.selectedAthleteId) {
+            AdminPanel.loadIaHistory(AdminPanel.state.selectedAthleteId);
+        }
     },
 
     loadPendingApprovals: () => {
@@ -255,18 +259,16 @@ const AdminPanel = {
         });
     },
     
-    // CORREÇÃO KPI DEFINITIVA: 
-    // Remove ordenação por data e usa limite puro (pega os últimos inseridos)
+    // CORREÇÃO KPI DEFINITIVA: Exibição Correta do Histórico
     loadIaHistory: (athleteId) => {
         const { iaHistoryList } = AdminPanel.elements;
         if (!iaHistoryList) return; 
         iaHistoryList.innerHTML = "<p>Carregando histórico...</p>";
         
         const historyRef = AdminPanel.state.db.ref(`iaAnalysisHistory/${athleteId}`);
-        // ALTERAÇÃO: limitToLast(50) sem orderByChild garante que traga os últimos 50 adicionados
+        // Usa limitToLast para pegar os últimos e não depender de datas quebradas
         const query = historyRef.limitToLast(50);
         
-        // Garante limpeza do listener antigo
         if (AppPrincipal.state.listeners['adminIaHistory']) {
             if(typeof AppPrincipal.state.listeners['adminIaHistory'].off === 'function') {
                 AppPrincipal.state.listeners['adminIaHistory'].off();
@@ -282,9 +284,11 @@ const AdminPanel = {
             }
             let items = [];
             snapshot.forEach(c => items.push({id: c.key, data: c.val()}));
+            
             // Inverte para o mais recente ficar no topo
             items.reverse().forEach(item => {
-                iaHistoryList.appendChild(AdminPanel.createIaHistoryCard(item.id, item.data))
+                const card = AdminPanel.createIaHistoryCard(item.id, item.data);
+                iaHistoryList.appendChild(card);
             });
         });
     },
@@ -395,11 +399,19 @@ const AdminPanel = {
     createIaHistoryCard: (id, data) => {
         const el = document.createElement('div');
         el.className = 'workout-card';
-        const date = new Date(data.analysisDate).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+        // Formatação de data robusta
+        let dateStr = "Data desconhecida";
+        try {
+            if (data.analysisDate) {
+                dateStr = new Date(data.analysisDate).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+            }
+        } catch (e) { console.error(e); }
+
         const summary = data.analysisResult ? (data.analysisResult.split('\n').slice(0, 3).join('\n') + '...') : 'Sem resumo';
+        
         el.innerHTML = `
             <div class="workout-card-header">
-                <div><span class="date">Análise de ${date}</span></div>
+                <div><span class="date">Análise de ${dateStr}</span></div>
             </div>
             <div class="workout-card-body"><p>${summary}</p></div>
         `;
