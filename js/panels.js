@@ -1,5 +1,5 @@
 /* =================================================================== */
-/* ARQUIVO DE MÓDULOS (V4.2 - FINAL STABLE: FINANCEIRO, FEED & KPI)
+/* ARQUIVO DE MÓDULOS (V4.3 - RESTAURAÇÃO VISUAL V2 + FINANCEIRO/IA)
 /* =================================================================== */
 
 // ===================================================================
@@ -10,7 +10,7 @@ const AdminPanel = {
     elements: {},
 
     init: (user, db) => {
-        console.log("AdminPanel V4.2: Inicializado.");
+        console.log("AdminPanel V4.3: Inicializado.");
         AdminPanel.state = { db, currentUser: user, selectedAthleteId: null, athletes: {} };
 
         AdminPanel.elements = {
@@ -233,20 +233,12 @@ const AdminPanel = {
                 workoutsList.innerHTML = "<p>Nenhum treino agendado.</p>";
                 return;
             }
-            // Para treinos, queremos a ordem de data (futuro em baixo, passado em cima ou vice versa)
-            // Firebase orderna Ascendente. Vamos inverter para ver o mais longe no topo? 
-            // Não, padrão é mais próximo. Vamos manter a ordem do firebase e inverter no array se precisar.
-            // Para agenda, Ascendente (padrão) é bom.
-            let items = [];
+            // Firebase ordena Ascendente (Antigo -> Novo).
+            // Iteramos normalmente e usamos PREPEND para inverter na tela (Novo/Futuro -> Antigo).
             snapshot.forEach(childSnapshot => {
-                items.push({key: childSnapshot.key, val: childSnapshot.val()});
-            });
-            
-            // Inverter para mostrar os mais recentes/futuros no topo se desejar, 
-            // mas padrão agenda é data crescente.
-            items.forEach(item => {
-                const card = AdminPanel.createWorkoutCard(item.key, item.val, athleteId);
-                workoutsList.appendChild(card); // Append para manter ordem de data
+                const card = AdminPanel.createWorkoutCard(childSnapshot.key, childSnapshot.val(), athleteId);
+                // RESTAURAÇÃO: prepend coloca o último da lista (data futura) no topo.
+                workoutsList.prepend(card); 
             });
         });
     },
@@ -257,7 +249,6 @@ const AdminPanel = {
         iaHistoryList.innerHTML = "<p>Carregando histórico...</p>";
         
         const historyRef = AdminPanel.state.db.ref(`iaAnalysisHistory/${athleteId}`);
-        // CORREÇÃO KPI: Ordenar por chave (criação) garante que o ultimo salvo apareça
         const query = historyRef.limitToLast(10);
         
         AppPrincipal.state.listeners['adminIaHistory'] = query;
@@ -270,7 +261,6 @@ const AdminPanel = {
             }
             let items = [];
             snapshot.forEach(c => items.push({id: c.key, data: c.val()}));
-            // Inverte para o mais recente (último criado) ficar em cima
             items.reverse().forEach(item => iaHistoryList.appendChild(AdminPanel.createIaHistoryCard(item.id, item.data)));
         });
     },
@@ -393,18 +383,50 @@ const AdminPanel = {
         return el;
     },
 
+    // RESTAURAÇÃO: Exibição completa de dados Strava + Splits (Tabela)
     createStravaDataDisplay: (stravaData) => {
         let mapLinkHtml = '';
         if (stravaData.mapLink) {
-            mapLinkHtml = `<p style="margin-top:5px;"><a href="${stravaData.mapLink}" target="_blank" style="color: #fc4c02; font-weight: bold; text-decoration: none;">🗺️ Ver Mapa no Strava</a></p>`;
+            mapLinkHtml = `<p style="margin-top:10px;"><a href="${stravaData.mapLink}" target="_blank" style="display:inline-block; padding:8px 12px; background:#fc4c02; color:white; border-radius:4px; text-decoration:none; font-weight:bold;">🗺️ Ver Mapa no Strava</a></p>`;
         }
+
+        let splitsHtml = '';
+        if (stravaData.splits && Array.isArray(stravaData.splits) && stravaData.splits.length > 0) {
+            let rows = stravaData.splits.map(split => `
+                <tr style="border-bottom: 1px solid #eee;">
+                    <td style="padding:4px;">${split.km}</td>
+                    <td style="padding:4px;">${split.pace}</td>
+                    <td style="padding:4px;">${split.ele}</td>
+                </tr>
+            `).join('');
+
+            splitsHtml = `
+                <details style="margin-top: 10px; background: #fff; padding: 10px; border-radius: 5px; border: 1px solid #ddd;">
+                    <summary style="cursor:pointer; font-weight:bold; color:#00008B;">📊 Ver Parciais (Km a Km)</summary>
+                    <table style="width:100%; margin-top:10px; border-collapse:collapse; font-size:0.9rem;">
+                        <thead>
+                            <tr style="background:#f4f4f4; text-align:left;">
+                                <th style="padding:4px;">Km</th>
+                                <th style="padding:4px;">Pace</th>
+                                <th style="padding:4px;">Elev.</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                </details>
+            `;
+        }
+
         return `
-            <fieldset class="strava-data-display">
-                <legend><i class='bx bxl-strava'></i> Dados Extraídos (Gemini Vision)</legend>
-                <p>Distância: ${stravaData.distancia || "N/A"}</p>
-                <p>Tempo:     ${stravaData.tempo || "N/A"}</p>
-                <p>Ritmo:     ${stravaData.ritmo || "N/A"}</p>
+            <fieldset class="strava-data-display" style="border-color:#fc4c02;">
+                <legend><i class='bx bxl-strava'></i> Dados do Treino</legend>
+                <div style="font-family:monospace; font-size:1rem;">
+                    <p><strong>Distância:</strong> ${stravaData.distancia || "N/A"}</p>
+                    <p><strong>Tempo:</strong>     ${stravaData.tempo || "N/A"}</p>
+                    <p><strong>Ritmo Médio:</strong> ${stravaData.ritmo || "N/A"}</p>
+                </div>
                 ${mapLinkHtml}
+                ${splitsHtml}
             </fieldset>
         `;
     },
@@ -449,44 +471,6 @@ const AdminPanel = {
                     if (snapshot.exists()) myLikeRef.remove(); else myLikeRef.set(true);
                 });
             });
-        }
-    },
-
-    handleAnalyzeAthleteIA: async () => {
-        const { selectedAthleteId } = AdminPanel.state;
-        if (!selectedAthleteId) return alert("Selecione um atleta.");
-        
-        AppPrincipal.openIaAnalysisModal(); 
-        const iaAnalysisOutput = AppPrincipal.elements.iaAnalysisOutput;
-        const saveBtn = AppPrincipal.elements.saveIaAnalysisBtn;
-        
-        iaAnalysisOutput.textContent = "Coletando dados do atleta...";
-        saveBtn.classList.add('hidden'); 
-
-        try {
-            const athleteName = AdminPanel.state.athletes[selectedAthleteId].name;
-            const dataRef = AdminPanel.state.db.ref(`data/${selectedAthleteId}/workouts`);
-            const snapshot = await dataRef.orderByChild('date').limitToLast(10).once('value');
-            
-            if (!snapshot.exists()) throw new Error("Nenhum dado de treino encontrado.");
-            const workoutData = snapshot.val();
-            
-            const prompt = `ATUE COMO: Coach de Corrida. ATLETA: ${athleteName}. DADOS: ${JSON.stringify(workoutData, null, 2)}. Crie um relatório breve e direto sobre consistência e performance.`;
-            
-            iaAnalysisOutput.textContent = "Gerando análise (Gemini)...";
-            const analysisResult = await AppPrincipal.callGeminiTextAPI(prompt);
-            
-            iaAnalysisOutput.textContent = analysisResult;
-            AppPrincipal.state.currentAnalysisData = {
-                analysisDate: new Date().toISOString(),
-                coachUid: AdminPanel.state.currentUser.uid,
-                prompt: prompt,
-                analysisResult: analysisResult
-            };
-            saveBtn.classList.remove('hidden'); 
-
-        } catch (err) {
-            iaAnalysisOutput.textContent = `ERRO: ${err.message}`;
         }
     }
 };
@@ -811,6 +795,7 @@ const AtletaPanel = {
             }
             snapshot.forEach(childSnapshot => {
                 const card = AtletaPanel.createWorkoutCard(childSnapshot.key, childSnapshot.val(), athleteId);
+                // RESTAURAÇÃO: prepend coloca os treinos futuros no topo
                 workoutsList.prepend(card);
             });
         });
@@ -855,18 +840,50 @@ const AtletaPanel = {
         return el;
     },
     
+    // RESTAURAÇÃO: Visualização Completa (Strava + Splits)
     createStravaDataDisplay: (stravaData) => {
         let mapLinkHtml = '';
         if (stravaData.mapLink) {
-            mapLinkHtml = `<p style="margin-top:5px;"><a href="${stravaData.mapLink}" target="_blank" style="color: #fc4c02; font-weight: bold; text-decoration: none;">🗺️ Ver Mapa no Strava</a></p>`;
+            mapLinkHtml = `<p style="margin-top:10px;"><a href="${stravaData.mapLink}" target="_blank" style="display:inline-block; padding:8px 12px; background:#fc4c02; color:white; border-radius:4px; text-decoration:none; font-weight:bold;">🗺️ Ver Mapa no Strava</a></p>`;
         }
+
+        let splitsHtml = '';
+        if (stravaData.splits && Array.isArray(stravaData.splits) && stravaData.splits.length > 0) {
+            let rows = stravaData.splits.map(split => `
+                <tr style="border-bottom: 1px solid #eee;">
+                    <td style="padding:4px;">${split.km}</td>
+                    <td style="padding:4px;">${split.pace}</td>
+                    <td style="padding:4px;">${split.ele}</td>
+                </tr>
+            `).join('');
+
+            splitsHtml = `
+                <details style="margin-top: 10px; background: #fff; padding: 10px; border-radius: 5px; border: 1px solid #ddd;">
+                    <summary style="cursor:pointer; font-weight:bold; color:#00008B;">📊 Ver Parciais (Km a Km)</summary>
+                    <table style="width:100%; margin-top:10px; border-collapse:collapse; font-size:0.9rem;">
+                        <thead>
+                            <tr style="background:#f4f4f4; text-align:left;">
+                                <th style="padding:4px;">Km</th>
+                                <th style="padding:4px;">Pace</th>
+                                <th style="padding:4px;">Elev.</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                </details>
+            `;
+        }
+
         return `
-            <fieldset class="strava-data-display">
-                <legend><i class='bx bxl-strava'></i> Dados Extraídos (Gemini Vision)</legend>
-                <p>Distância: ${stravaData.distancia || "N/A"}</p>
-                <p>Tempo:     ${stravaData.tempo || "N/A"}</p>
-                <p>Ritmo:     ${stravaData.ritmo || "N/A"}</p>
+            <fieldset class="strava-data-display" style="border-color:#fc4c02;">
+                <legend><i class='bx bxl-strava'></i> Dados do Treino</legend>
+                <div style="font-family:monospace; font-size:1rem;">
+                    <p><strong>Distância:</strong> ${stravaData.distancia || "N/A"}</p>
+                    <p><strong>Tempo:</strong>     ${stravaData.tempo || "N/A"}</p>
+                    <p><strong>Ritmo Médio:</strong> ${stravaData.ritmo || "N/A"}</p>
+                </div>
                 ${mapLinkHtml}
+                ${splitsHtml}
             </fieldset>
         `;
     },
