@@ -1,5 +1,5 @@
 /* =================================================================== */
-/* ARQUIVO DE MÓDULOS (V5.1 - FINAL STABLE: RESTORE FEED V2 & FIX IA)
+/* ARQUIVO DE MÓDULOS (V6.0 - FINAL: FEED E IA PELA CHAVE DE INSERÇÃO)
 /* =================================================================== */
 
 // ===================================================================
@@ -10,7 +10,7 @@ const AdminPanel = {
     elements: {},
 
     init: (user, db) => {
-        console.log("AdminPanel V5.1: Inicializado.");
+        console.log("AdminPanel V6.0: Inicializado.");
         AdminPanel.state = { db, currentUser: user, selectedAthleteId: null, athletes: {} };
 
         AdminPanel.elements = {
@@ -36,7 +36,7 @@ const AdminPanel = {
             iaHistoryList: document.getElementById('ia-history-list')
         };
 
-        // Bind de eventos (Com verificações de segurança)
+        // Bind de eventos
         if (AdminPanel.elements.addWorkoutForm)
             AdminPanel.elements.addWorkoutForm.addEventListener('submit', AdminPanel.handleAddWorkout);
         
@@ -52,11 +52,9 @@ const AdminPanel = {
         if(AdminPanel.elements.tabKpisBtn) 
             AdminPanel.elements.tabKpisBtn.addEventListener('click', () => AdminPanel.switchTab('kpis'));
         
-        // CORREÇÃO CRÍTICA IA: Verificação antes do listener
+        // CORREÇÃO BOTÃO IA: Listener direto e seguro
         if (AdminPanel.elements.analyzeAthleteBtnIa) {
             AdminPanel.elements.analyzeAthleteBtnIa.addEventListener('click', AdminPanel.handleAnalyzeAthleteIA);
-        } else {
-            console.error("Botão IA não encontrado no DOM");
         }
         
         // Carregar dados iniciais
@@ -257,16 +255,18 @@ const AdminPanel = {
         });
     },
     
-    // CORREÇÃO KPI: Ordenação e Limite Corretos
+    // CORREÇÃO KPI DEFINITIVA: 
+    // Remove ordenação por data e usa limite puro (pega os últimos inseridos)
     loadIaHistory: (athleteId) => {
         const { iaHistoryList } = AdminPanel.elements;
         if (!iaHistoryList) return; 
         iaHistoryList.innerHTML = "<p>Carregando histórico...</p>";
         
         const historyRef = AdminPanel.state.db.ref(`iaAnalysisHistory/${athleteId}`);
-        // Restaura lógica V2: ordernar por data de análise
-        const query = historyRef.orderByChild('analysisDate').limitToLast(50);
+        // ALTERAÇÃO: limitToLast(50) sem orderByChild garante que traga os últimos 50 adicionados
+        const query = historyRef.limitToLast(50);
         
+        // Garante limpeza do listener antigo
         if (AppPrincipal.state.listeners['adminIaHistory']) {
             if(typeof AppPrincipal.state.listeners['adminIaHistory'].off === 'function') {
                 AppPrincipal.state.listeners['adminIaHistory'].off();
@@ -539,14 +539,14 @@ const AdminPanel = {
 };
 
 // ===================================================================
-// 4. FinancePanel (MÓDULO FINANCEIRO - V5.0)
+// 4. FinancePanel (MÓDULO FINANCEIRO - V5.0 - ANUAL/TOTAL)
 // ===================================================================
 const FinancePanel = {
     state: {},
     elements: {},
 
     init: (user, db) => {
-        console.log("FinancePanel V1.4: Anual Pro.");
+        console.log("FinancePanel V5.0: Inicializado.");
         FinancePanel.state = { db, currentUser: user, inventory: {}, transactions: [] };
         
         FinancePanel.elements = {
@@ -695,7 +695,6 @@ const FinancePanel = {
         FinancePanel.state.transactions.forEach(([key, t]) => {
             const val = parseFloat(t.amount);
             const tDate = new Date(t.date); 
-            // Fix timezone offset
             const parts = t.date.split('-');
             const safeDate = new Date(parts[0], parts[1]-1, parts[2]); 
             
@@ -1013,7 +1012,7 @@ const FeedPanel = {
     elements: {},
 
     init: (user, db) => {
-        console.log("FeedPanel V5.1: Inicializado com Correção V2.");
+        console.log("FeedPanel V6.0: Inicializado.");
         FeedPanel.state = { db, currentUser: user };
         FeedPanel.elements = { feedList: document.getElementById('feed-list') };
         FeedPanel.loadFeed();
@@ -1025,10 +1024,9 @@ const FeedPanel = {
         feedList.innerHTML = "<p>Carregando feed...</p>";
         const feedRef = FeedPanel.state.db.ref('publicWorkouts');
         
-        // CORREÇÃO CRÍTICA FEED V2 RESTORED: 
-        // Voltamos a usar 'realizadoAt' porque é assim que a V2 funcionava e os dados estão estruturados.
-        // Aumentei o limite para 50 para garantir que tudo apareça.
-        const query = feedRef.orderByChild('realizadoAt').limitToLast(50);
+        // CORREÇÃO CRÍTICA FEED V6: "LIMITO-LAST" PURO (SEM ORDENAÇÃO DE DATA)
+        // Isso garante que os últimos 50 itens INSERIDOS no banco apareçam, independente de datas.
+        const query = feedRef.limitToLast(50);
         
         AppPrincipal.state.listeners['feedData'] = query;
         
@@ -1046,7 +1044,7 @@ const FeedPanel = {
                 });
             });
             
-            // Inverte para mostrar o mais recente em cima
+            // Inverte para mostrar o mais recente (último inserido) no topo
             feedItems.reverse().forEach(item => {
                 try {
                     const card = FeedPanel.createFeedCard(item.id, item.data, item.data.ownerId);
